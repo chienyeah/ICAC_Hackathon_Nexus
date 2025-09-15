@@ -1,0 +1,53 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Transfer {
+  id          Int     @id @default(autoincrement())
+  txHash      String
+  playerId    Int
+  fromClub    String
+  toClub      String
+  feeWei      String
+  agent       String
+  agentFeeWei String
+  docSha256   String
+  ipfsCid     String?
+  ts          Int
+}
+
+model PrizeRelease {
+  id     Int    @id @default(autoincrement())
+  poolId Int
+  toAddr String
+  amount String
+  txHash String
+  ts     Int
+}
+
+model Sponsorship {
+  id        Int     @id @default(autoincrement())
+  sponsor   String
+  club      String
+  amountWei String
+  docSha256 String
+  ipfsCid   String?
+  ts        Int
+}
+
+model Sanction {
+  id        Int    @id @default(autoincrement())
+  subject   String
+  kind      String
+  reason    String
+  startDate Int
+  endDate   Int
+  ts        Int
+}
