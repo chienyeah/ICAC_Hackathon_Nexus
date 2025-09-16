@@ -1,8 +1,10 @@
 import axios from "axios";
 import { useEffect, useState } from "react";
 import type { Abi } from "viem";
-import { createWalletClient, custom } from "viem";
+import { createPublicClient, createWalletClient, custom, http, parseEther } from "viem";
 import { hardhat } from "viem/chains";
+import { ADDR } from "../utils/env";
+import { ensureConnected31337 } from "../utils/wallet";
 
 const PRIZE = ADDR.PRIZE;
 const TOKEN = ADDR.TOKEN;
@@ -67,18 +69,29 @@ export default function Prize() {
     setReleases(data);
   }
 
-  async function approveAndCreate(){
-    const [account] = await (window as any).ethereum.request({ method:"eth_requestAccounts" });
-    const accountHex = account as `0x${string}`;
-    const wallet = createWalletClient({ transport: custom((window as any).ethereum), chain: hardhat, account: accountHex });
-    const deposit = BigInt(Math.floor(parseFloat(amountSct) * 1e18));
+  async function approveAndCreate() {
+    try {
+      await ensureConnected31337();
+      const deposit = parseEther(amountSct || "0");
+      if (deposit <= 0n) throw new Error("Deposit must be greater than zero");
 
-    await wallet.writeContract({ abi: TOKEN_ABI, address: TOKEN, functionName: "approve",
-      args: [PRIZE, deposit], chain: hardhat, account: accountHex });
+      const [account] = await (window as any).ethereum.request({ method: "eth_requestAccounts" });
+      const accountHex = account as `0x${string}`;
+      const wallet = createWalletClient({
+        transport: custom((window as any).ethereum),
+        chain: hardhat,
+        account: accountHex,
+      });
 
-    await wallet.writeContract({ abi: PRIZE_ABI, address: PRIZE, functionName: "createPool",
-      args: [TOKEN, deposit], chain: hardhat, account: accountHex });
-
+      const approveHash = await wallet.writeContract({
+        abi: TOKEN_ABI,
+        address: TOKEN,
+        functionName: "approve",
+        args: [PRIZE, deposit],
+        chain: hardhat,
+        account: accountHex,
+      });
+      await publicClient.waitForTransactionReceipt({ hash: approveHash });
 
       const { request } = await publicClient.simulateContract({
         abi: PRIZE_ABI,
@@ -97,24 +110,67 @@ export default function Prize() {
     }
   }
 
-  async function verifyResults(){
-    const [account] = await (window as any).ethereum.request({ method:"eth_requestAccounts" });
-    const accountHex = account as `0x${string}`;
-    const wallet = createWalletClient({ transport: custom((window as any).ethereum), chain: hardhat, account: accountHex });
-    await wallet.writeContract({ abi: PRIZE_ABI, address: PRIZE, functionName:"verifyResults", args:[BigInt(poolId)], chain: hardhat, account: accountHex });
+  async function verifyResults() {
+    try {
+      await ensureConnected31337();
+      const [account] = await (window as any).ethereum.request({ method: "eth_requestAccounts" });
+      const accountHex = account as `0x${string}`;
+      const wallet = createWalletClient({
+        transport: custom((window as any).ethereum),
+        chain: hardhat,
+        account: accountHex,
+      });
+
+      const { request } = await publicClient.simulateContract({
+        abi: PRIZE_ABI,
+        address: PRIZE,
+        functionName: "verifyResults",
+        account: accountHex,
+        args: [BigInt(poolId)],
+      });
+      const hash = await wallet.writeContract(request);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      alert("✅ Results verified in block " + receipt.blockNumber);
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.shortMessage || e?.details || e?.data?.message || e?.message || String(e));
+    }
   }
 
-  async function release(){
-    const [account] = await (window as any).ethereum.request({ method:"eth_requestAccounts" });
-    const accountHex = account as `0x${string}`;
-    const wallet = createWalletClient({ transport: custom((window as any).ethereum), chain: hardhat, account: accountHex });
-    const winners = [to1 as `0x${string}`, to2 as `0x${string}`];
-    const amounts = [
-      BigInt(Math.floor(parseFloat(amt1) * 1e18)),
-      BigInt(Math.floor(parseFloat(amt2) * 1e18))
-    ];
-    await wallet.writeContract({ abi: PRIZE_ABI, address: PRIZE, functionName:"release", args:[BigInt(poolId), winners, amounts], chain: hardhat, account: accountHex });
-    setTimeout(refresh, 1500);
+  async function release() {
+    try {
+      await ensureConnected31337();
+      if (!H160.test(to1) || !H160.test(to2)) throw new Error("Winner addresses must be valid 0x strings");
+      const amountOne = parseEther(amt1 || "0");
+      const amountTwo = parseEther(amt2 || "0");
+      if (amountOne <= 0n || amountTwo <= 0n) throw new Error("Amounts must be greater than zero");
+
+      const [account] = await (window as any).ethereum.request({ method: "eth_requestAccounts" });
+      const accountHex = account as `0x${string}`;
+      const wallet = createWalletClient({
+        transport: custom((window as any).ethereum),
+        chain: hardhat,
+        account: accountHex,
+      });
+
+      const winners = [to1 as `0x${string}`, to2 as `0x${string}`];
+      const amounts = [amountOne, amountTwo];
+
+      const { request } = await publicClient.simulateContract({
+        abi: PRIZE_ABI,
+        address: PRIZE,
+        functionName: "release",
+        account: accountHex,
+        args: [BigInt(poolId), winners, amounts],
+      });
+      const hash = await wallet.writeContract(request);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      alert("✅ Prize released in block " + receipt.blockNumber);
+      await refresh();
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.shortMessage || e?.details || e?.data?.message || e?.message || String(e));
+    }
   }
 
   useEffect(() => {
