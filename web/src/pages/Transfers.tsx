@@ -14,21 +14,10 @@ const ROLE_MANAGER = ADDR.ROLES;
 const publicClient = createPublicClient({ chain: hardhat, transport: http("http://127.0.0.1:8545") });
 const TRANSFER_ABI = TransferRegistryArtifact.abi as Abi;
 const ROLE_MANAGER_ABI = RoleManagerArtifact.abi as Abi;
-const PAUSABLE_ABI: Abi = [
-  {
-    type: "function",
-    name: "paused",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [
-      {
-        internalType: "bool",
-        name: "",
-        type: "bool",
-      },
-    ],
-  },
-];
+
+const TRANSFER_SUPPORTS_PAUSE = TRANSFER_ABI.some(
+  (entry) => entry.type === "function" && (entry as any).name === "paused",
+);
 
 // Helper: read a File as base64 (browser-safe, no Buffer needed)
 function fileToBase64(file: File): Promise<string> {
@@ -120,15 +109,14 @@ export default function Transfers(){
       } catch (err) {
         console.warn("roles pause probe failed", err);
       }
-      try {
-        registryPaused = Boolean(await publicClient.readContract({
-          abi: PAUSABLE_ABI,
-          address: TRANSFER,
-          functionName: "paused",
-        }));
-      } catch (err: any) {
-        const message = err?.message || err?.shortMessage || "";
-        if (message && !/function selector|does not exist/i.test(message)) {
+      if (TRANSFER_SUPPORTS_PAUSE) {
+        try {
+          registryPaused = Boolean(await publicClient.readContract({
+            abi: TRANSFER_ABI,
+            address: TRANSFER,
+            functionName: "paused",
+          }));
+        } catch (err) {
           console.warn("transfer pause probe failed", err);
         }
       }
