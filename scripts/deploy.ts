@@ -1,31 +1,58 @@
+// scripts/deploy.ts
 import { ethers } from "hardhat";
+import fs from "fs";
+
+async function tryUnpause(c: any) {
+  try {
+    if (typeof c.unpause === "function") {
+      const tx = await c.unpause();
+      await tx.wait();
+    }
+  } catch {
+    // ignore if not pausable or already unpaused
+  }
+}
 
 async function main() {
   const [admin, clubA, clubB, sponsor1] = await ethers.getSigners();
 
+  // Deploy
   const RoleManager = await ethers.getContractFactory("RoleManager");
-  const roles = await RoleManager.deploy(admin.address); await roles.waitForDeployment();
+  const roles = await RoleManager.deploy(admin.address);
+  await roles.waitForDeployment();
 
   const DemoToken = await ethers.getContractFactory("DemoToken");
-  const token = await DemoToken.deploy(); await token.waitForDeployment();
+  const token = await DemoToken.deploy();
+  await token.waitForDeployment();
 
   const TransferRegistry = await ethers.getContractFactory("TransferRegistry");
-  const transfer = await TransferRegistry.deploy(await roles.getAddress()); await transfer.waitForDeployment();
+  const transfer = await TransferRegistry.deploy(await roles.getAddress());
+  await transfer.waitForDeployment();
 
   const PrizePool = await ethers.getContractFactory("PrizePool");
-  const prize = await PrizePool.deploy(await roles.getAddress()); await prize.waitForDeployment();
+  const prize = await PrizePool.deploy(await roles.getAddress());
+  await prize.waitForDeployment();
 
   const SponsorshipRegistry = await ethers.getContractFactory("SponsorshipRegistry");
-  const sponsorship = await SponsorshipRegistry.deploy(await roles.getAddress()); await sponsorship.waitForDeployment();
+  const sponsorship = await SponsorshipRegistry.deploy(await roles.getAddress());
+  await sponsorship.waitForDeployment();
 
   const DisciplinaryRegistry = await ethers.getContractFactory("DisciplinaryRegistry");
-  const disciplinary = await DisciplinaryRegistry.deploy(await roles.getAddress()); await disciplinary.waitForDeployment();
+  const disciplinary = await DisciplinaryRegistry.deploy(await roles.getAddress());
+  await disciplinary.waitForDeployment();
 
-  // Grant roles for demo
-  await roles.grantRole(await roles.CLUB_ROLE(), clubA.address);
-  await roles.grantRole(await roles.CLUB_ROLE(), clubB.address);
-  await roles.grantRole(await roles.SPONSOR_ROLE(), sponsor1.address);
+  // Roles (await receipts)
+  await (await roles.grantRole(await roles.CLUB_ROLE(), clubA.address)).wait();
+  await (await roles.grantRole(await roles.CLUB_ROLE(), clubB.address)).wait();
+  await (await roles.grantRole(await roles.SPONSOR_ROLE(), sponsor1.address)).wait();
 
+  // Unpause when available (no-op if not Pausable)
+  await tryUnpause(transfer);
+  await tryUnpause(prize);
+  await tryUnpause(sponsorship);
+  await tryUnpause(disciplinary);
+
+  // Output single JSON line ONLY
   const out = {
     roles: await roles.getAddress(),
     token: await token.getAddress(),
@@ -36,9 +63,15 @@ async function main() {
     clubA: clubA.address,
     clubB: clubB.address,
     sponsor1: sponsor1.address,
-    admin: admin.address
+    admin: admin.address,
   };
-  // print ONLY JSON:
   console.log(JSON.stringify(out));
+
+  // Optional local file
+  fs.writeFileSync("addresses.json", JSON.stringify(out, null, 2));
 }
-main().catch((e)=>{ console.error(e); process.exit(1); });
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

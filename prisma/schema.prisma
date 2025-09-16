@@ -18,9 +18,10 @@ model Transfer {
   feeWei      String
   agent       String
   agentFeeWei String
-  docSha256   String
-  ipfsCid     String?
+  sha256   String
+  ipfsCid     String
   ts          Int
+  createdAt    DateTime  @default(now())
 }
 
 model PrizeRelease {

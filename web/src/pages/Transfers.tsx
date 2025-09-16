@@ -1,9 +1,14 @@
+import { hardhat } from "viem/chains";
+import { createPublicClient, http } from "viem";
 import axios from "axios";
 import { useEffect, useState } from "react";
 import type { Abi, ContractFunctionParameters } from "viem";
 import { createWalletClient, custom } from "viem";
+import { ADDR } from "../utils/env";
+import { ensureConnected31337 } from "../utils/wallet";
 
-const TRANSFER = import.meta.env.VITE_TRANSFER as `0x${string}`;
+const TRANSFER = ADDR.TRANSFER;
+const publicClient = createPublicClient({ chain: hardhat, transport: http("http://127.0.0.1:8545") });
 
 // Minimal ABI (only what we call)
 const TRANSFER_ABI: Abi = [
@@ -51,35 +56,63 @@ export default function Transfers(){
     setList(data);
   }
 
-  async function record(){
-    let sha256 = "0x";
-    if(file){
+async function record() {
+  try {
+    await ensureConnected31337();
+
+    // validate inputs
+    const addr = /^0x[0-9a-fA-F]{40}$/;
+    if (!addr.test(form.toClub)) throw new Error("Invalid 'To Club' address");
+    if (!addr.test(form.agent))  throw new Error("Invalid 'Agent' address");
+
+    const playerId    = BigInt(form.playerId);
+    const feeWei      = BigInt(form.feeWei || "0");
+    const agentFeeWei = BigInt(form.agentFeeWei || "0");
+
+    // optional file hash
+    let sha256: `0x${string}` = "0x0000000000000000000000000000000000000000000000000000000000000000";
+    if (file) {
       const b64 = await fileToBase64(file);
       const r = await axios.post("http://localhost:4000/hash-file", { base64: b64 });
-      sha256 = r.data.sha256; // "0x...."
+      if (!/^0x[0-9a-fA-F]{64}$/.test(r?.data?.sha256)) throw new Error("Bad hash from API");
+      sha256 = r.data.sha256;
     }
 
-    await (window as any).ethereum.request({ method:"eth_requestAccounts" });
-    const wallet = createWalletClient({ transport: custom((window as any).ethereum) });
+    const [account] = await (window as any).ethereum.request({ method: "eth_requestAccounts" });
 
-    const data: ContractFunctionParameters = {
+    const wallet = createWalletClient({
+      transport: custom((window as any).ethereum),
+      chain: hardhat,
+      account: account as `0x${string}`,
+    });
+
+    const hash = await wallet.writeContract({
       abi: TRANSFER_ABI,
       address: TRANSFER,
       functionName: "recordTransfer",
       args: [
-        BigInt(form.playerId),
+        playerId,
         form.toClub as `0x${string}`,
-        BigInt(form.feeWei),
+        feeWei,
         form.agent as `0x${string}`,
-        BigInt(form.agentFeeWei),
-        sha256 as `0x${string}`,
-        form.ipfsCid
+        agentFeeWei,
+        sha256,
+        form.ipfsCid || ""
       ]
-    };
+    });
 
-    await wallet.writeContract(data);
-    setTimeout(refresh, 1500);
+    // ⬇️ wait here until mined (or throws on revert)
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    console.log("Tx mined:", receipt);
+
+    alert("✅ Transfer confirmed in block " + receipt.blockNumber);
+    await refresh(); // indexer should have picked the event by now
+  } catch (e: any) {
+    console.error(e);
+    alert(e?.shortMessage || e?.data?.message || e?.message || String(e));
   }
+}
+
 
   useEffect(()=>{ refresh(); }, []);
 

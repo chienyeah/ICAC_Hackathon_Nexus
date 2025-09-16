@@ -1,0 +1,7 @@
+(await (await ethers.getContractAt("TransferRegistry", process.env.TRANSFER)).paused())
+(await ethers.provider.getCode(process.env.TRANSFER)) !== '0x'
+const dotenv=require('dotenv');dotenv.config();
+npx hardhat run scripts/fix-roles.ts --network localhost
+tr.interface.fragments.map(f => f.format()).filter(x => x.includes("("))
+const tr = await ethers.getContractAt("TransferRegistry", process.env.TRANSFER)
+await ethers.provider.getCode("0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0")

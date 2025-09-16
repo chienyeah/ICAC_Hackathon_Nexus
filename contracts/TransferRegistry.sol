@@ -1,23 +1,28 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./RoleManager.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 
-contract TransferRegistry {
+contract TransferRegistry is AccessControl {
+    bytes32 public constant CLUB_ROLE = keccak256("CLUB_ROLE");
+
     struct Transfer {
+        uint256 id;
         uint256 playerId;
         address fromClub;
         address toClub;
         uint256 feeWei;
         address agent;
         uint256 agentFeeWei;
-        bytes32 docSha256;   // simple, verifiable on UI
-        string  ipfsCid;     // optional: display / retrieval
-        uint64  ts;
+        bytes32 docSha256;
+        string ipfsCid;
+        uint256 ts;
     }
 
-    RoleManager public roles;
-    uint256 public transferCount;
+    // 👇 expose a public getter (indexer may call this)
+    uint256 public lastId;
+
+    // 👇 expose mapping getter or add an explicit view function
     mapping(uint256 => Transfer) public transfers;
 
     event TransferRecorded(
@@ -29,13 +34,13 @@ contract TransferRegistry {
         address agent,
         uint256 agentFeeWei,
         bytes32 docSha256,
-        string ipfsCid,
-        uint64 ts
+        string ipfsCid
     );
 
-    constructor(RoleManager _roles) { roles = _roles; }
-
-    modifier onlyClub() { require(roles.hasRole(roles.CLUB_ROLE(), msg.sender), "NOT_CLUB"); _; }
+    constructor(address admin) {
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(CLUB_ROLE, admin);
+    }
 
     function recordTransfer(
         uint256 playerId,
@@ -44,10 +49,11 @@ contract TransferRegistry {
         address agent,
         uint256 agentFeeWei,
         bytes32 docSha256,
-        string calldata ipfsCid
-    ) external onlyClub returns (uint256 id) {
-        id = ++transferCount;
+        string memory ipfsCid
+    ) external onlyRole(CLUB_ROLE) returns (uint256 id) {
+        id = ++lastId;
         transfers[id] = Transfer({
+            id: id,
             playerId: playerId,
             fromClub: msg.sender,
             toClub: toClub,
@@ -56,8 +62,16 @@ contract TransferRegistry {
             agentFeeWei: agentFeeWei,
             docSha256: docSha256,
             ipfsCid: ipfsCid,
-            ts: uint64(block.timestamp)
+            ts: block.timestamp
         });
-        emit TransferRecorded(id, playerId, msg.sender, toClub, feeWei, agent, agentFeeWei, docSha256, ipfsCid, uint64(block.timestamp));
+
+        emit TransferRecorded(
+            id, playerId, msg.sender, toClub, feeWei, agent, agentFeeWei, docSha256, ipfsCid
+        );
+    }
+
+    // If your indexer expects an explicit getter, keep this too:
+    function getTransfer(uint256 id) external view returns (Transfer memory) {
+        return transfers[id];
     }
 }

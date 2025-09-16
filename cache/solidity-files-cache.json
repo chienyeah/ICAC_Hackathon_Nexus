@@ -495,8 +495,8 @@
       ]
     },
     "D:\\ICAC_Hackathon_Nexus\\contracts\\TransferRegistry.sol": {
-      "lastModificationDate": 1757852906953,
-      "contentHash": "70149c24059f25023462767fdd61b478",
+      "lastModificationDate": 1758029484557,
+      "contentHash": "3e6c8892e9f69aaa8a9788a5e0858f7a",
       "sourceName": "contracts/TransferRegistry.sol",
       "solcConfig": {
         "version": "0.8.28",
@@ -523,7 +523,7 @@
         }
       },
       "imports": [
-        "./RoleManager.sol"
+        "@openzeppelin/contracts/access/AccessControl.sol"
       ],
       "versionPragmas": [
         "^0.8.20"

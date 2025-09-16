@@ -23,13 +23,92 @@ import type {
   TypedContractMethod,
 } from "../common";
 
+export declare namespace TransferRegistry {
+  export type TransferStruct = {
+    id: BigNumberish;
+    playerId: BigNumberish;
+    fromClub: AddressLike;
+    toClub: AddressLike;
+    feeWei: BigNumberish;
+    agent: AddressLike;
+    agentFeeWei: BigNumberish;
+    docSha256: BytesLike;
+    ipfsCid: string;
+    ts: BigNumberish;
+  };
+
+  export type TransferStructOutput = [
+    id: bigint,
+    playerId: bigint,
+    fromClub: string,
+    toClub: string,
+    feeWei: bigint,
+    agent: string,
+    agentFeeWei: bigint,
+    docSha256: string,
+    ipfsCid: string,
+    ts: bigint
+  ] & {
+    id: bigint;
+    playerId: bigint;
+    fromClub: string;
+    toClub: string;
+    feeWei: bigint;
+    agent: string;
+    agentFeeWei: bigint;
+    docSha256: string;
+    ipfsCid: string;
+    ts: bigint;
+  };
+}
+
 export interface TransferRegistryInterface extends Interface {
   getFunction(
-    nameOrSignature: "recordTransfer" | "roles" | "transferCount" | "transfers"
+    nameOrSignature:
+      | "CLUB_ROLE"
+      | "DEFAULT_ADMIN_ROLE"
+      | "getRoleAdmin"
+      | "getTransfer"
+      | "grantRole"
+      | "hasRole"
+      | "lastId"
+      | "recordTransfer"
+      | "renounceRole"
+      | "revokeRole"
+      | "supportsInterface"
+      | "transfers"
   ): FunctionFragment;
 
-  getEvent(nameOrSignatureOrTopic: "TransferRecorded"): EventFragment;
+  getEvent(
+    nameOrSignatureOrTopic:
+      | "RoleAdminChanged"
+      | "RoleGranted"
+      | "RoleRevoked"
+      | "TransferRecorded"
+  ): EventFragment;
 
+  encodeFunctionData(functionFragment: "CLUB_ROLE", values?: undefined): string;
+  encodeFunctionData(
+    functionFragment: "DEFAULT_ADMIN_ROLE",
+    values?: undefined
+  ): string;
+  encodeFunctionData(
+    functionFragment: "getRoleAdmin",
+    values: [BytesLike]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "getTransfer",
+    values: [BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "grantRole",
+    values: [BytesLike, AddressLike]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "hasRole",
+    values: [BytesLike, AddressLike]
+  ): string;
+  encodeFunctionData(functionFragment: "lastId", values?: undefined): string;
   encodeFunctionData(
     functionFragment: "recordTransfer",
     values: [
@@ -42,26 +121,111 @@ export interface TransferRegistryInterface extends Interface {
       string
     ]
   ): string;
-  encodeFunctionData(functionFragment: "roles", values?: undefined): string;
   encodeFunctionData(
-    functionFragment: "transferCount",
-    values?: undefined
+    functionFragment: "renounceRole",
+    values: [BytesLike, AddressLike]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "revokeRole",
+    values: [BytesLike, AddressLike]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "supportsInterface",
+    values: [BytesLike]
   ): string;
   encodeFunctionData(
     functionFragment: "transfers",
     values: [BigNumberish]
   ): string;
 
+  decodeFunctionResult(functionFragment: "CLUB_ROLE", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "DEFAULT_ADMIN_ROLE",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "getRoleAdmin",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "getTransfer",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(functionFragment: "grantRole", data: BytesLike): Result;
+  decodeFunctionResult(functionFragment: "hasRole", data: BytesLike): Result;
+  decodeFunctionResult(functionFragment: "lastId", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "recordTransfer",
     data: BytesLike
   ): Result;
-  decodeFunctionResult(functionFragment: "roles", data: BytesLike): Result;
   decodeFunctionResult(
-    functionFragment: "transferCount",
+    functionFragment: "renounceRole",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(functionFragment: "revokeRole", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "supportsInterface",
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "transfers", data: BytesLike): Result;
+}
+
+export namespace RoleAdminChangedEvent {
+  export type InputTuple = [
+    role: BytesLike,
+    previousAdminRole: BytesLike,
+    newAdminRole: BytesLike
+  ];
+  export type OutputTuple = [
+    role: string,
+    previousAdminRole: string,
+    newAdminRole: string
+  ];
+  export interface OutputObject {
+    role: string;
+    previousAdminRole: string;
+    newAdminRole: string;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace RoleGrantedEvent {
+  export type InputTuple = [
+    role: BytesLike,
+    account: AddressLike,
+    sender: AddressLike
+  ];
+  export type OutputTuple = [role: string, account: string, sender: string];
+  export interface OutputObject {
+    role: string;
+    account: string;
+    sender: string;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace RoleRevokedEvent {
+  export type InputTuple = [
+    role: BytesLike,
+    account: AddressLike,
+    sender: AddressLike
+  ];
+  export type OutputTuple = [role: string, account: string, sender: string];
+  export interface OutputObject {
+    role: string;
+    account: string;
+    sender: string;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
 }
 
 export namespace TransferRecordedEvent {
@@ -74,8 +238,7 @@ export namespace TransferRecordedEvent {
     agent: AddressLike,
     agentFeeWei: BigNumberish,
     docSha256: BytesLike,
-    ipfsCid: string,
-    ts: BigNumberish
+    ipfsCid: string
   ];
   export type OutputTuple = [
     id: bigint,
@@ -86,8 +249,7 @@ export namespace TransferRecordedEvent {
     agent: string,
     agentFeeWei: bigint,
     docSha256: string,
-    ipfsCid: string,
-    ts: bigint
+    ipfsCid: string
   ];
   export interface OutputObject {
     id: bigint;
@@ -99,7 +261,6 @@ export namespace TransferRecordedEvent {
     agentFeeWei: bigint;
     docSha256: string;
     ipfsCid: string;
-    ts: bigint;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -150,6 +311,32 @@ export interface TransferRegistry extends BaseContract {
     event?: TCEvent
   ): Promise<this>;
 
+  CLUB_ROLE: TypedContractMethod<[], [string], "view">;
+
+  DEFAULT_ADMIN_ROLE: TypedContractMethod<[], [string], "view">;
+
+  getRoleAdmin: TypedContractMethod<[role: BytesLike], [string], "view">;
+
+  getTransfer: TypedContractMethod<
+    [id: BigNumberish],
+    [TransferRegistry.TransferStructOutput],
+    "view"
+  >;
+
+  grantRole: TypedContractMethod<
+    [role: BytesLike, account: AddressLike],
+    [void],
+    "nonpayable"
+  >;
+
+  hasRole: TypedContractMethod<
+    [role: BytesLike, account: AddressLike],
+    [boolean],
+    "view"
+  >;
+
+  lastId: TypedContractMethod<[], [bigint], "view">;
+
   recordTransfer: TypedContractMethod<
     [
       playerId: BigNumberish,
@@ -164,14 +351,29 @@ export interface TransferRegistry extends BaseContract {
     "nonpayable"
   >;
 
-  roles: TypedContractMethod<[], [string], "view">;
+  renounceRole: TypedContractMethod<
+    [role: BytesLike, callerConfirmation: AddressLike],
+    [void],
+    "nonpayable"
+  >;
 
-  transferCount: TypedContractMethod<[], [bigint], "view">;
+  revokeRole: TypedContractMethod<
+    [role: BytesLike, account: AddressLike],
+    [void],
+    "nonpayable"
+  >;
+
+  supportsInterface: TypedContractMethod<
+    [interfaceId: BytesLike],
+    [boolean],
+    "view"
+  >;
 
   transfers: TypedContractMethod<
     [arg0: BigNumberish],
     [
       [
+        bigint,
         bigint,
         string,
         string,
@@ -182,6 +384,7 @@ export interface TransferRegistry extends BaseContract {
         string,
         bigint
       ] & {
+        id: bigint;
         playerId: bigint;
         fromClub: string;
         toClub: string;
@@ -201,6 +404,39 @@ export interface TransferRegistry extends BaseContract {
   ): T;
 
   getFunction(
+    nameOrSignature: "CLUB_ROLE"
+  ): TypedContractMethod<[], [string], "view">;
+  getFunction(
+    nameOrSignature: "DEFAULT_ADMIN_ROLE"
+  ): TypedContractMethod<[], [string], "view">;
+  getFunction(
+    nameOrSignature: "getRoleAdmin"
+  ): TypedContractMethod<[role: BytesLike], [string], "view">;
+  getFunction(
+    nameOrSignature: "getTransfer"
+  ): TypedContractMethod<
+    [id: BigNumberish],
+    [TransferRegistry.TransferStructOutput],
+    "view"
+  >;
+  getFunction(
+    nameOrSignature: "grantRole"
+  ): TypedContractMethod<
+    [role: BytesLike, account: AddressLike],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
+    nameOrSignature: "hasRole"
+  ): TypedContractMethod<
+    [role: BytesLike, account: AddressLike],
+    [boolean],
+    "view"
+  >;
+  getFunction(
+    nameOrSignature: "lastId"
+  ): TypedContractMethod<[], [bigint], "view">;
+  getFunction(
     nameOrSignature: "recordTransfer"
   ): TypedContractMethod<
     [
@@ -216,17 +452,29 @@ export interface TransferRegistry extends BaseContract {
     "nonpayable"
   >;
   getFunction(
-    nameOrSignature: "roles"
-  ): TypedContractMethod<[], [string], "view">;
+    nameOrSignature: "renounceRole"
+  ): TypedContractMethod<
+    [role: BytesLike, callerConfirmation: AddressLike],
+    [void],
+    "nonpayable"
+  >;
   getFunction(
-    nameOrSignature: "transferCount"
-  ): TypedContractMethod<[], [bigint], "view">;
+    nameOrSignature: "revokeRole"
+  ): TypedContractMethod<
+    [role: BytesLike, account: AddressLike],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
+    nameOrSignature: "supportsInterface"
+  ): TypedContractMethod<[interfaceId: BytesLike], [boolean], "view">;
   getFunction(
     nameOrSignature: "transfers"
   ): TypedContractMethod<
     [arg0: BigNumberish],
     [
       [
+        bigint,
         bigint,
         string,
         string,
@@ -237,6 +485,7 @@ export interface TransferRegistry extends BaseContract {
         string,
         bigint
       ] & {
+        id: bigint;
         playerId: bigint;
         fromClub: string;
         toClub: string;
@@ -252,6 +501,27 @@ export interface TransferRegistry extends BaseContract {
   >;
 
   getEvent(
+    key: "RoleAdminChanged"
+  ): TypedContractEvent<
+    RoleAdminChangedEvent.InputTuple,
+    RoleAdminChangedEvent.OutputTuple,
+    RoleAdminChangedEvent.OutputObject
+  >;
+  getEvent(
+    key: "RoleGranted"
+  ): TypedContractEvent<
+    RoleGrantedEvent.InputTuple,
+    RoleGrantedEvent.OutputTuple,
+    RoleGrantedEvent.OutputObject
+  >;
+  getEvent(
+    key: "RoleRevoked"
+  ): TypedContractEvent<
+    RoleRevokedEvent.InputTuple,
+    RoleRevokedEvent.OutputTuple,
+    RoleRevokedEvent.OutputObject
+  >;
+  getEvent(
     key: "TransferRecorded"
   ): TypedContractEvent<
     TransferRecordedEvent.InputTuple,
@@ -260,7 +530,40 @@ export interface TransferRegistry extends BaseContract {
   >;
 
   filters: {
-    "TransferRecorded(uint256,uint256,address,address,uint256,address,uint256,bytes32,string,uint64)": TypedContractEvent<
+    "RoleAdminChanged(bytes32,bytes32,bytes32)": TypedContractEvent<
+      RoleAdminChangedEvent.InputTuple,
+      RoleAdminChangedEvent.OutputTuple,
+      RoleAdminChangedEvent.OutputObject
+    >;
+    RoleAdminChanged: TypedContractEvent<
+      RoleAdminChangedEvent.InputTuple,
+      RoleAdminChangedEvent.OutputTuple,
+      RoleAdminChangedEvent.OutputObject
+    >;
+
+    "RoleGranted(bytes32,address,address)": TypedContractEvent<
+      RoleGrantedEvent.InputTuple,
+      RoleGrantedEvent.OutputTuple,
+      RoleGrantedEvent.OutputObject
+    >;
+    RoleGranted: TypedContractEvent<
+      RoleGrantedEvent.InputTuple,
+      RoleGrantedEvent.OutputTuple,
+      RoleGrantedEvent.OutputObject
+    >;
+
+    "RoleRevoked(bytes32,address,address)": TypedContractEvent<
+      RoleRevokedEvent.InputTuple,
+      RoleRevokedEvent.OutputTuple,
+      RoleRevokedEvent.OutputObject
+    >;
+    RoleRevoked: TypedContractEvent<
+      RoleRevokedEvent.InputTuple,
+      RoleRevokedEvent.OutputTuple,
+      RoleRevokedEvent.OutputObject
+    >;
+
+    "TransferRecorded(uint256,uint256,address,address,uint256,address,uint256,bytes32,string)": TypedContractEvent<
       TransferRecordedEvent.InputTuple,
       TransferRecordedEvent.OutputTuple,
       TransferRecordedEvent.OutputObject
