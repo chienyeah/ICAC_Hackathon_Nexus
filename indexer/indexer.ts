@@ -48,35 +48,12 @@ async function getEventTxHash(event: ContractEventPayload): Promise<string> {
     return txHash;
   }
   try {
-  codex/remove-all-paused-reads-w48xnn
-    const parsed = iface.parseLog(log)!;
-    const a = parsed.args as any;
-
-    // Get block timestamp (seconds)
-    const block = await provider.getBlock(log.blockHash!);
-    const ts = Number(block?.timestamp ?? Math.floor(Date.now() / 1000));
-
-    await prisma.transfer.upsert({
-      where: { id: Number(a.id) },
-      create: {
-        id: Number(a.id),
-        txHash: log.transactionHash,
-        playerId: Number(a.playerId),
-        fromClub: String(a.fromClub),
-        toClub: String(a.toClub),
-        feeWei: String(a.feeWei),
-        agent: String(a.agent),
-        agentFeeWei: String(a.agentFeeWei),
-        docSha256: String(a.docSha256),
-        ipfsCid: String(a.ipfsCid),
-        ts,                                 // <— add this
-      },
-      update: {}, // immutable
-    });
-
-    console.log(`Saved transfer #${a.id} ts=${ts} tx=${log.transactionHash}`);
-  } catch (e) {
-    console.error("indexer save error:", e);
+    const receipt = await event.getTransactionReceipt();
+    if (receipt?.hash) {
+      return receipt.hash;
+    }
+  } catch (err) {
+    console.warn("failed to resolve transaction hash from receipt", err);
   }
   throw new Error("Unable to resolve transaction hash for event");
 }
