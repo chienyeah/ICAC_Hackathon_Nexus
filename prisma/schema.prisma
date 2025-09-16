@@ -10,7 +10,7 @@ datasource db {
 }
 
 model Transfer {
-  id          Int     @id @default(autoincrement())
+  id          Int     @id
   txHash      String
   playerId    Int
   fromClub    String
@@ -18,7 +18,7 @@ model Transfer {
   feeWei      String
   agent       String
   agentFeeWei String
-  sha256   String
+  docSha256   String
   ipfsCid     String
   ts          Int
   createdAt    DateTime  @default(now())
@@ -34,7 +34,7 @@ model PrizeRelease {
 }
 
 model Sponsorship {
-  id        Int     @id @default(autoincrement())
+  id        Int     @id
   sponsor   String
   club      String
   amountWei String
@@ -44,7 +44,7 @@ model Sponsorship {
 }
 
 model Sanction {
-  id        Int    @id @default(autoincrement())
+  id        Int    @id
   subject   String
   kind      String
   reason    String
