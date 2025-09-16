@@ -26,7 +26,7 @@ async function main() {
   await token.waitForDeployment();
 
   const TransferRegistry = await ethers.getContractFactory("TransferRegistry");
-  const transfer = await TransferRegistry.deploy(await roles.getAddress());
+  const transfer = await TransferRegistry.deploy(admin.address);
   await transfer.waitForDeployment();
 
   const PrizePool = await ethers.getContractFactory("PrizePool");
@@ -45,6 +45,10 @@ async function main() {
   await (await roles.grantRole(await roles.CLUB_ROLE(), clubA.address)).wait();
   await (await roles.grantRole(await roles.CLUB_ROLE(), clubB.address)).wait();
   await (await roles.grantRole(await roles.SPONSOR_ROLE(), sponsor1.address)).wait();
+
+  // TransferRegistry uses its own AccessControl; grant club role there too
+  await (await transfer.grantRole(await transfer.CLUB_ROLE(), clubA.address)).wait();
+  await (await transfer.grantRole(await transfer.CLUB_ROLE(), clubB.address)).wait();
 
   // Unpause when available (no-op if not Pausable)
   await tryUnpause(transfer);
