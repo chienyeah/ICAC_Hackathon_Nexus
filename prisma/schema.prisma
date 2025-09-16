@@ -18,7 +18,7 @@ model Transfer {
   feeWei      String
   agent       String
   agentFeeWei String
-  sha256   String
+  docSha256   String
   ipfsCid     String
   ts          Int
   createdAt    DateTime  @default(now())

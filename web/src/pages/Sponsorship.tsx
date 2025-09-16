@@ -1,10 +1,9 @@
 import axios from "axios";
 import { useEffect, useState } from "react";
 import type { Abi } from "viem";
-import { createPublicClient, createWalletClient, custom, http } from "viem";
+import { createWalletClient, custom } from "viem";
 import { hardhat } from "viem/chains";
-import { ADDR } from "../utils/env";
-import { ensureConnected31337 } from "../utils/wallet";
+
 
 const SPONSOR = ADDR.SPONSOR;
 const publicClient = createPublicClient({ chain: hardhat, transport: http("http://127.0.0.1:8545") });
@@ -65,23 +64,17 @@ export default function Sponsorship() {
         account: accountHex,
       });
 
-      const { request } = await publicClient.simulateContract({
-        abi: SPONSOR_ABI,
-        address: SPONSOR,
-        functionName: "registerDeal",
-        account: accountHex,
-        args: [form.club as `0x${string}`, amount, sha256, form.ipfsCid],
-      });
+    const [account] = await (window as any).ethereum.request({ method:"eth_requestAccounts" });
+    const accountHex = account as `0x${string}`;
+    const wallet = createWalletClient({ transport: custom((window as any).ethereum), chain: hardhat, account: accountHex });
 
-      const hash = await wallet.writeContract(request);
-      await publicClient.waitForTransactionReceipt({ hash });
-      alert("✅ Sponsorship registered");
-      setFile(null);
-      await refresh();
-    } catch (e: any) {
-      console.error(e);
-      alert(e?.shortMessage || e?.details || e?.data?.message || e?.message || String(e));
-    }
+    await wallet.writeContract({
+      abi: SPONSOR_ABI, address: SPONSOR, functionName: "registerDeal",
+      args: [form.club as `0x${string}`, BigInt(form.amountWei), sha256 as `0x${string}`, form.ipfsCid],
+      chain: hardhat,
+      account: accountHex,
+    });
+    setTimeout(refresh, 1500);
   }
 
   useEffect(() => {

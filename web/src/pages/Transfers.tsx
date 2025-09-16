@@ -63,11 +63,17 @@ export default function Transfers(){
 
       const [account] = await (window as any).ethereum.request({ method: "eth_requestAccounts" });
 
-      const { request } = await publicClient.simulateContract({
+      const wallet = createWalletClient({
+        transport: custom((window as any).ethereum),
+        chain: hardhat,
+        account: account as `0x${string}`,
+      });
+
+      const hash = await wallet.writeContract({
         abi: TRANSFER_ABI,
         address: TRANSFER,
         functionName: "recordTransfer",
-        account: account as `0x${string}`,
+
         args: [
           playerId,
           form.toClub as `0x${string}`,
@@ -79,24 +85,15 @@ export default function Transfers(){
         ],
       });
 
-      const wallet = createWalletClient({
-        transport: custom((window as any).ethereum),
-        chain: hardhat,
-        account: account as `0x${string}`,
-      });
-
-      const hash = await wallet.writeContract(request);
-
       // ⬇️ wait here until mined (or throws on revert)
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       console.log("Tx mined:", receipt);
 
       alert("✅ Transfer confirmed in block " + receipt.blockNumber);
-      setFile(null);
       await refresh(); // indexer should have picked the event by now
     } catch (e: any) {
       console.error(e);
-      alert(e?.shortMessage || e?.details || e?.data?.message || e?.message || String(e));
+      alert(e?.shortMessage || e?.data?.message || e?.message || String(e));
     }
   }
 
