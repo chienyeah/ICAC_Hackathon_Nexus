@@ -18,10 +18,7 @@ app.post("/hash-file", async (req, res) => {
   res.json({ sha256: "0x"+sha });
 });
 
-app.get("/transfers", async (_, res) => {
-  const transfers = await prisma.transfer.findMany({ orderBy: { id: "desc" } });
-  res.json(transfers.map((t) => ({ ...t, docSha256: t.docSha256 })));
-});
+app.get("/transfers", async (_, res) => res.json(await prisma.transfer.findMany({ orderBy: { id: "desc" } })));
 app.get("/prizes",    async (_, res) => res.json(await prisma.prizeRelease.findMany({ orderBy: { id: "desc" } })));
 app.get("/sponsors",  async (_, res) => res.json(await prisma.sponsorship.findMany({ orderBy: { id: "desc" } })));
 app.get("/sanctions", async (_, res) => res.json(await prisma.sanction.findMany({ orderBy: { id: "desc" } })));

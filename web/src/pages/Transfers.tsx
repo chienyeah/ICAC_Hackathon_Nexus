@@ -6,12 +6,28 @@ import type { Abi } from "viem";
 import { createWalletClient, custom } from "viem";
 import { ADDR } from "../utils/env";
 import { ensureConnected31337 } from "../utils/wallet";
-import { formatTxError } from "../utils/errors";
-import TransferRegistryArtifact from "@artifacts/contracts/TransferRegistry.sol/TransferRegistry.json";
 
 const TRANSFER = ADDR.TRANSFER;
 const publicClient = createPublicClient({ chain: hardhat, transport: http("http://127.0.0.1:8545") });
-const TRANSFER_ABI = TransferRegistryArtifact.abi as Abi;
+
+// Minimal ABI (only what we call)
+const TRANSFER_ABI: Abi = [
+  {
+    type: "function",
+    name: "recordTransfer",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "playerId", type: "uint256" },
+      { name: "toClub", type: "address" },
+      { name: "feeWei", type: "uint256" },
+      { name: "agent", type: "address" },
+      { name: "agentFeeWei", type: "uint256" },
+      { name: "docSha256", type: "bytes32" },
+      { name: "ipfsCid", type: "string" }
+    ],
+    outputs: [{ name: "id", type: "uint256" }]
+  }
+];
 
 // Helper: read a File as base64 (browser-safe, no Buffer needed)
 function fileToBase64(file: File): Promise<string> {
@@ -63,38 +79,26 @@ export default function Transfers(){
       }
 
       const [account] = await (window as any).ethereum.request({ method: "eth_requestAccounts" });
-      const accountHex = account as `0x${string}`;
-      const args = [
-        playerId,
-        form.toClub as `0x${string}`,
-        feeWei,
-        form.agent as `0x${string}`,
-        agentFeeWei,
-        sha256,
-        form.ipfsCid || "",
-      ] as const;
-
-      await publicClient.simulateContract({
-        abi: TRANSFER_ABI,
-        address: TRANSFER,
-        functionName: "recordTransfer",
-        account: accountHex,
-        args,
-      });
 
       const wallet = createWalletClient({
         transport: custom((window as any).ethereum),
         chain: hardhat,
-        account: accountHex,
+        account: account as `0x${string}`,
       });
 
       const hash = await wallet.writeContract({
         abi: TRANSFER_ABI,
         address: TRANSFER,
         functionName: "recordTransfer",
-        args,
-        account: accountHex,
-        chain: hardhat,
+        args: [
+          playerId,
+          form.toClub as `0x${string}`,
+          feeWei,
+          form.agent as `0x${string}`,
+          agentFeeWei,
+          sha256,
+          form.ipfsCid || "",
+        ],
       });
 
       // ⬇️ wait here until mined (or throws on revert)
@@ -102,11 +106,10 @@ export default function Transfers(){
       console.log("Tx mined:", receipt);
 
       alert("✅ Transfer confirmed in block " + receipt.blockNumber);
-      setFile(null);
       await refresh(); // indexer should have picked the event by now
     } catch (e: any) {
-      console.error("record transfer error", e);
-      alert(formatTxError(e));
+      console.error(e);
+      alert(e?.shortMessage || e?.data?.message || e?.message || String(e));
     }
   }
 
@@ -129,15 +132,9 @@ export default function Transfers(){
 
       <h3 style={{marginTop:24}}>Recent Transfers</h3>
       <ul>
-        {list.map((t) => (
+        {list.map(t=>(
           <li key={t.id}>
-            #{t.id} Player {t.playerId} {t.fromClub} → {t.toClub} | Fee {t.feeWei} | SHA256 {t.docSha256?.slice(0, 10)}…
-            {" "}
-            {t.ipfsCid && (
-              <a href={`https://ipfs.io/ipfs/${t.ipfsCid}`} target="_blank" rel="noreferrer">
-                doc
-              </a>
-            )}
+            #{t.id} Player {t.playerId} {t.fromClub} → {t.toClub} | Fee {t.feeWei} | SHA256 {t.docSha256?.slice(0,10)}… {t.ipfsCid && <a href={`https://ipfs.io/ipfs/${t.ipfsCid}`} target="_blank">doc</a>}
           </li>
         ))}
       </ul>
