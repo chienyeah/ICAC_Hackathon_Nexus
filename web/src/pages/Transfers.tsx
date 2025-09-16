@@ -62,12 +62,18 @@ export default function Transfers(){
       }
 
       const [account] = await (window as any).ethereum.request({ method: "eth_requestAccounts" });
+      const from = account as `0x${string}`;
+
+      const nonce = await publicClient.getTransactionCount({
+        address: from,
+        blockTag: "pending",
+      });
 
       const { request } = await publicClient.simulateContract({
         abi: TRANSFER_ABI,
         address: TRANSFER,
         functionName: "recordTransfer",
-        account: account as `0x${string}`,
+        account: from,
         args: [
           playerId,
           form.toClub as `0x${string}`,
@@ -82,10 +88,10 @@ export default function Transfers(){
       const wallet = createWalletClient({
         transport: custom((window as any).ethereum),
         chain: hardhat,
-        account: account as `0x${string}`,
+        account: from,
       });
 
-      const hash = await wallet.writeContract(request);
+      const hash = await wallet.writeContract({ ...request, nonce });
 
       // ⬇️ wait here until mined (or throws on revert)
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
