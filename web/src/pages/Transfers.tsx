@@ -14,7 +14,6 @@ const ROLE_MANAGER = ADDR.ROLES;
 const publicClient = createPublicClient({ chain: hardhat, transport: http("http://127.0.0.1:8545") });
 const TRANSFER_ABI = TransferRegistryArtifact.abi as Abi;
 const ROLE_MANAGER_ABI = RoleManagerArtifact.abi as Abi;
-
 const TRANSFER_SUPPORTS_PAUSE = TRANSFER_ABI.some(
   (entry) => entry.type === "function" && (entry as any).name === "paused",
 );
@@ -48,11 +47,149 @@ export default function Transfers(){
   const [circuitSource, setCircuitSource] = useState({ roles: false, registry: false });
   const [checkingCircuit, setCheckingCircuit] = useState(false);
   const [resuming, setResuming] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [wallet, setWallet] = useState<{ address: `0x${string}` | null; isAdmin: boolean }>({ address: null, isAdmin: false });
 
-  async function refresh() {
-    const { data } = await axios.get("http://localhost:4000/transfers");
+  const refresh = useCallback(async (): Promise<any[]> => {
+    const response = await axios.get("http://localhost:4000/transfers");
+    const data = Array.isArray(response.data) ? response.data : [];
     setList(data);
+    return data;
+  }, []);
+
+  async function waitForIndexer(txHash: `0x${string}`): Promise<any> {
+    const target = txHash.toLowerCase();
+    const attempts = 12;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const rows = await refresh();
+        const match = rows.find((row: any) => typeof row?.txHash === "string" && row.txHash.toLowerCase() === target);
+        if (match) {
+          return match;
+        }
+      } catch (err: any) {
+        if (i === attempts - 1) {
+          throw new Error(`Transfer confirmed on-chain but failed to query the indexer: ${friendlyError(err)}`);
+        }
+      }
+      if (i !== attempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
+    throw new Error(
+      "Transfer confirmed on-chain but the indexer hasn't stored it yet. It may still be syncing—please wait a few seconds and refresh the Transfers list.",
+    );
+  }
+
+  const refreshWalletStatus = useCallback(async (): Promise<{ address: `0x${string}` | null; isAdmin: boolean }> => {
+    const eth = (window as any).ethereum;
+    let info: { address: `0x${string}` | null; isAdmin: boolean } = { address: null, isAdmin: false };
+    if (!eth) {
+      setWallet(info);
+      return info;
+    }
+    try {
+      const accounts = (await eth.request({ method: "eth_accounts" })) as string[] | undefined;
+      const address = (accounts?.[0] ?? null) as `0x${string}` | null;
+      if (!address) {
+        setWallet(info);
+        return info;
+      }
+      let isAdmin = false;
+      try {
+        const adminRole = (await publicClient.readContract({
+          abi: ROLE_MANAGER_ABI,
+          address: ROLE_MANAGER,
+          functionName: "ADMIN_ROLE",
+        })) as `0x${string}`;
+        isAdmin = (await publicClient.readContract({
+          abi: ROLE_MANAGER_ABI,
+          address: ROLE_MANAGER,
+          functionName: "hasRole",
+          args: [adminRole, address],
+        })) as boolean;
+      } catch (err) {
+        console.warn("admin role lookup failed", err);
+      }
+      info = { address, isAdmin };
+      setWallet(info);
+      return info;
+    } catch (err) {
+      console.warn("wallet status check failed", err);
+      setWallet(info);
+      return info;
+    }
+  }, []);
+
+  async function refreshCircuit(): Promise<boolean> {
+    setCheckingCircuit(true);
+    let rolesPaused = false;
+    let registryPaused = false;
+    try {
+      try {
+        rolesPaused = Boolean(await publicClient.readContract({
+          abi: ROLE_MANAGER_ABI,
+          address: ROLE_MANAGER,
+          functionName: "paused",
+        }));
+      } catch (err) {
+        console.warn("roles pause probe failed", err);
+      }
+      if (TRANSFER_SUPPORTS_PAUSE) {
+        try {
+          registryPaused = Boolean(await publicClient.readContract({
+            abi: TRANSFER_ABI,
+            address: TRANSFER,
+            functionName: "paused",
+          }));
+        } catch (err) {
+          console.warn("transfer pause probe failed", err);
+        }
+      }
+      return rolesPaused || registryPaused;
+    } finally {
+      setCircuitSource({ roles: rolesPaused, registry: registryPaused });
+      setCircuitOpen(rolesPaused || registryPaused);
+      setCheckingCircuit(false);
+    }
+  }
+
+  async function resumeTransfers() {
+    try {
+      setResuming(true);
+      await ensureConnected31337();
+      const info = await refreshWalletStatus();
+      if (!info.address) {
+        throw new Error("Connect a wallet with the admin role to resume transfers");
+      }
+      if (!info.isAdmin) {
+        throw new Error("Only an administrator can close the circuit breaker");
+      }
+      const nonce = await publicClient.getTransactionCount({
+        address: info.address,
+        blockTag: "pending",
+      });
+      const { request } = await publicClient.simulateContract({
+        abi: ROLE_MANAGER_ABI,
+        address: ROLE_MANAGER,
+        functionName: "unpause",
+        account: info.address,
+      });
+      const walletClient = createWalletClient({
+        transport: custom((window as any).ethereum),
+        chain: hardhat,
+        account: info.address,
+      });
+      const hash = await walletClient.writeContract({ ...request, nonce });
+      await publicClient.waitForTransactionReceipt({ hash });
+      await refreshCircuit();
+      alert("✅ Transfers resumed. You can submit new transfers now.");
+    } catch (err) {
+      console.error(err);
+      alert(friendlyError(err));
+    } finally {
+      setResuming(false);
+    }
   }
 
   const refreshWalletStatus = useCallback(async (): Promise<{ address: `0x${string}` | null; isAdmin: boolean }> => {
@@ -168,6 +305,7 @@ export default function Transfers(){
 
   async function record() {
     try {
+      setSubmitting(true);
       await ensureConnected31337();
 
       const walletInfo = await refreshWalletStatus();
@@ -255,13 +393,16 @@ export default function Transfers(){
       }
       console.log("Tx mined:", receipt);
 
-      alert("✅ Transfer confirmed in block " + receipt.blockNumber);
+      const indexed = await waitForIndexer(hash);
+
       setFile(null);
-      await refresh(); // indexer should have picked the event by now
+      alert(`✅ Transfer #${indexed.id} confirmed in block ${receipt.blockNumber}`);
       await refreshCircuit();
     } catch (e: any) {
       console.error(e);
       alert(friendlyError(e));
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -287,7 +428,7 @@ export default function Transfers(){
   useEffect(() => {
     void refresh();
     void refreshCircuit();
-  }, []);
+  }, [refresh]);
 
   return (
     <div>
@@ -334,8 +475,8 @@ export default function Transfers(){
         <input placeholder="Agent Fee (wei)" value={form.agentFeeWei} onChange={e=>setForm({...form, agentFeeWei: e.target.value})}/>
         <input placeholder="IPFS CID (optional)" value={form.ipfsCid} onChange={e=>setForm({...form, ipfsCid: e.target.value})}/>
         <input type="file" onChange={e=>setFile(e.target.files?.[0] || null)} />
-        <button onClick={record} disabled={circuitOpen || checkingCircuit || resuming}>
-          {circuitOpen ? "Transfers paused" : "Submit"}
+        <button onClick={record} disabled={submitting || circuitOpen || checkingCircuit || resuming}>
+          {circuitOpen ? "Transfers paused" : submitting ? "Submitting…" : "Submit"}
         </button>
       </div>
 
