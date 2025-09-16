@@ -6,28 +6,11 @@ import type { Abi } from "viem";
 import { createWalletClient, custom } from "viem";
 import { ADDR } from "../utils/env";
 import { ensureConnected31337 } from "../utils/wallet";
+import TransferRegistryArtifact from "@artifacts/contracts/TransferRegistry.sol/TransferRegistry.json";
 
 const TRANSFER = ADDR.TRANSFER;
 const publicClient = createPublicClient({ chain: hardhat, transport: http("http://127.0.0.1:8545") });
-
-// Minimal ABI (only what we call)
-const TRANSFER_ABI: Abi = [
-  {
-    type: "function",
-    name: "recordTransfer",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "playerId", type: "uint256" },
-      { name: "toClub", type: "address" },
-      { name: "feeWei", type: "uint256" },
-      { name: "agent", type: "address" },
-      { name: "agentFeeWei", type: "uint256" },
-      { name: "docSha256", type: "bytes32" },
-      { name: "ipfsCid", type: "string" }
-    ],
-    outputs: [{ name: "id", type: "uint256" }]
-  }
-];
+const TRANSFER_ABI = TransferRegistryArtifact.abi as Abi;
 
 // Helper: read a File as base64 (browser-safe, no Buffer needed)
 function fileToBase64(file: File): Promise<string> {
@@ -90,6 +73,7 @@ export default function Transfers(){
         abi: TRANSFER_ABI,
         address: TRANSFER,
         functionName: "recordTransfer",
+
         args: [
           playerId,
           form.toClub as `0x${string}`,
@@ -132,9 +116,15 @@ export default function Transfers(){
 
       <h3 style={{marginTop:24}}>Recent Transfers</h3>
       <ul>
-        {list.map(t=>(
+        {list.map((t) => (
           <li key={t.id}>
-            #{t.id} Player {t.playerId} {t.fromClub} → {t.toClub} | Fee {t.feeWei} | SHA256 {t.docSha256?.slice(0,10)}… {t.ipfsCid && <a href={`https://ipfs.io/ipfs/${t.ipfsCid}`} target="_blank">doc</a>}
+            #{t.id} Player {t.playerId} {t.fromClub} → {t.toClub} | Fee {t.feeWei} | SHA256 {t.docSha256?.slice(0, 10)}…
+            {" "}
+            {t.ipfsCid && (
+              <a href={`https://ipfs.io/ipfs/${t.ipfsCid}`} target="_blank" rel="noreferrer">
+                doc
+              </a>
+            )}
           </li>
         ))}
       </ul>

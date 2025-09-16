@@ -4,7 +4,11 @@ import type { Abi } from "viem";
 import { createWalletClient, custom } from "viem";
 import { hardhat } from "viem/chains";
 
-const SPONSOR = import.meta.env.VITE_SPONSOR as `0x${string}`;
+
+const SPONSOR = ADDR.SPONSOR;
+const publicClient = createPublicClient({ chain: hardhat, transport: http("http://127.0.0.1:8545") });
+const ZERO_HASH = "0x".padEnd(66, "0") as `0x${string}`;
+const H160 = /^0x[0-9a-fA-F]{40}$/;
 
 const SPONSOR_ABI: Abi = [
   { type:"function", name:"registerDeal", stateMutability:"nonpayable",
@@ -27,16 +31,38 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-export default function Sponsorship(){
+export default function Sponsorship() {
   const [list, setList] = useState<any[]>([]);
-  const [file, setFile] = useState<File|null>(null);
-  const [form, setForm] = useState({ club:"", amountWei:"10000000000000000", ipfsCid:"" });
+  const [file, setFile] = useState<File | null>(null);
+  const [form, setForm] = useState({ club: "", amountWei: "10000000000000000", ipfsCid: "" });
 
-  async function refresh(){ setList((await axios.get("http://localhost:4000/sponsors")).data); }
+  async function refresh() {
+    const { data } = await axios.get("http://localhost:4000/sponsors");
+    setList(data);
+  }
 
-  async function register(){
-    let sha256 = "0x";
-    if(file){ sha256 = (await axios.post("http://localhost:4000/hash-file", { base64: await fileToBase64(file)})).data.sha256; }
+  async function register() {
+    try {
+      await ensureConnected31337();
+      if (!H160.test(form.club)) throw new Error("Club must be a valid 0x address");
+      const amount = BigInt(form.amountWei || "0");
+      if (amount <= 0n) throw new Error("Amount must be greater than zero");
+
+      let sha256: `0x${string}` = ZERO_HASH;
+      if (file) {
+        const base64 = await fileToBase64(file);
+        const response = await axios.post("http://localhost:4000/hash-file", { base64 });
+        if (!/^0x[0-9a-fA-F]{64}$/.test(response?.data?.sha256)) throw new Error("Bad hash from API");
+        sha256 = response.data.sha256;
+      }
+
+      const [account] = await (window as any).ethereum.request({ method: "eth_requestAccounts" });
+      const accountHex = account as `0x${string}`;
+      const wallet = createWalletClient({
+        transport: custom((window as any).ethereum),
+        chain: hardhat,
+        account: accountHex,
+      });
 
     const [account] = await (window as any).ethereum.request({ method:"eth_requestAccounts" });
     const accountHex = account as `0x${string}`;
@@ -51,7 +77,9 @@ export default function Sponsorship(){
     setTimeout(refresh, 1500);
   }
 
-  useEffect(()=>{ refresh(); }, []);
+  useEffect(() => {
+    refresh();
+  }, []);
 
   return (
     <div>

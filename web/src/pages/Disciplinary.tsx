@@ -4,7 +4,9 @@ import type { Abi } from "viem";
 import { createWalletClient, custom } from "viem";
 import { hardhat } from "viem/chains";
 
-const DISCIPLINARY = import.meta.env.VITE_DISCIPLINARY as `0x${string}`;
+const DISCIPLINARY = ADDR.DISCIPLINARY;
+const publicClient = createPublicClient({ chain: hardhat, transport: http("http://127.0.0.1:8545") });
+const H160 = /^0x[0-9a-fA-F]{40}$/;
 
 const DISCIPLINARY_ABI: Abi = [
   { type:"function", name:"logSanction", stateMutability:"nonpayable",
@@ -17,7 +19,7 @@ const DISCIPLINARY_ABI: Abi = [
     ], outputs:[] }
 ];
 
-export default function Disciplinary(){
+export default function Disciplinary() {
   const [list, setList] = useState<any[]>([]);
   const [form, setForm] = useState({ subject:"", kind:"Suspension", reason:"", start:"", end:"" });
 
@@ -38,7 +40,9 @@ export default function Disciplinary(){
     setTimeout(refresh, 1500);
   }
 
-  useEffect(()=>{ refresh(); }, []);
+  useEffect(() => {
+    refresh();
+  }, []);
 
   return (
     <div>
