@@ -14,6 +14,7 @@ const ROLE_MANAGER = ADDR.ROLES;
 const publicClient = createPublicClient({ chain: hardhat, transport: http("http://127.0.0.1:8545") });
 const TRANSFER_ABI = TransferRegistryArtifact.abi as Abi;
 const ROLE_MANAGER_ABI = RoleManagerArtifact.abi as Abi;
+
 const TRANSFER_SUPPORTS_PAUSE = TRANSFER_ABI.some(
   (entry) => entry.type === "function" && (entry as any).name === "paused",
 );
