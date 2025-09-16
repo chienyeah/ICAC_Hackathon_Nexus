@@ -192,6 +192,117 @@ export default function Transfers(){
     }
   }
 
+  const refreshWalletStatus = useCallback(async (): Promise<{ address: `0x${string}` | null; isAdmin: boolean }> => {
+    const eth = (window as any).ethereum;
+    let info: { address: `0x${string}` | null; isAdmin: boolean } = { address: null, isAdmin: false };
+    if (!eth) {
+      setWallet(info);
+      return info;
+    }
+    try {
+      const accounts = (await eth.request({ method: "eth_accounts" })) as string[] | undefined;
+      const address = (accounts?.[0] ?? null) as `0x${string}` | null;
+      if (!address) {
+        setWallet(info);
+        return info;
+      }
+      let isAdmin = false;
+      try {
+        const adminRole = (await publicClient.readContract({
+          abi: ROLE_MANAGER_ABI,
+          address: ROLE_MANAGER,
+          functionName: "ADMIN_ROLE",
+        })) as `0x${string}`;
+        isAdmin = (await publicClient.readContract({
+          abi: ROLE_MANAGER_ABI,
+          address: ROLE_MANAGER,
+          functionName: "hasRole",
+          args: [adminRole, address],
+        })) as boolean;
+      } catch (err) {
+        console.warn("admin role lookup failed", err);
+      }
+      info = { address, isAdmin };
+      setWallet(info);
+      return info;
+    } catch (err) {
+      console.warn("wallet status check failed", err);
+      setWallet(info);
+      return info;
+    }
+  }, []);
+
+  async function refreshCircuit(): Promise<boolean> {
+    setCheckingCircuit(true);
+    let rolesPaused = false;
+    let registryPaused = false;
+    try {
+      try {
+        rolesPaused = Boolean(await publicClient.readContract({
+          abi: ROLE_MANAGER_ABI,
+          address: ROLE_MANAGER,
+          functionName: "paused",
+        }));
+      } catch (err) {
+        console.warn("roles pause probe failed", err);
+      }
+      if (TRANSFER_SUPPORTS_PAUSE) {
+        try {
+          registryPaused = Boolean(await publicClient.readContract({
+            abi: TRANSFER_ABI,
+            address: TRANSFER,
+            functionName: "paused",
+          }));
+        } catch (err) {
+          console.warn("transfer pause probe failed", err);
+        }
+      }
+      return rolesPaused || registryPaused;
+    } finally {
+      setCircuitSource({ roles: rolesPaused, registry: registryPaused });
+      setCircuitOpen(rolesPaused || registryPaused);
+      setCheckingCircuit(false);
+    }
+  }
+
+  async function resumeTransfers() {
+    try {
+      setResuming(true);
+      await ensureConnected31337();
+      const info = await refreshWalletStatus();
+      if (!info.address) {
+        throw new Error("Connect a wallet with the admin role to resume transfers");
+      }
+      if (!info.isAdmin) {
+        throw new Error("Only an administrator can close the circuit breaker");
+      }
+      const nonce = await publicClient.getTransactionCount({
+        address: info.address,
+        blockTag: "pending",
+      });
+      const { request } = await publicClient.simulateContract({
+        abi: ROLE_MANAGER_ABI,
+        address: ROLE_MANAGER,
+        functionName: "unpause",
+        account: info.address,
+      });
+      const walletClient = createWalletClient({
+        transport: custom((window as any).ethereum),
+        chain: hardhat,
+        account: info.address,
+      });
+      const hash = await walletClient.writeContract({ ...request, nonce });
+      await publicClient.waitForTransactionReceipt({ hash });
+      await refreshCircuit();
+      alert("✅ Transfers resumed. You can submit new transfers now.");
+    } catch (err) {
+      console.error(err);
+      alert(friendlyError(err));
+    } finally {
+      setResuming(false);
+    }
+  }
+
   async function record() {
     try {
       setSubmitting(true);
