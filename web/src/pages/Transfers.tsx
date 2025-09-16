@@ -121,7 +121,7 @@ export default function Transfers(){
       <ul>
         {list.map((t) => (
           <li key={t.id}>
-            #{t.id} Player {t.playerId} {t.fromClub} → {t.toClub} | Fee {t.feeWei} | SHA256 {t.sha256?.slice(0, 10)}…
+            #{t.id} Player {t.playerId} {t.fromClub} → {t.toClub} | Fee {t.feeWei} | SHA256 {t.docSha256?.slice(0, 10)}…
             {" "}
             {t.ipfsCid && (
               <a href={`https://ipfs.io/ipfs/${t.ipfsCid}`} target="_blank" rel="noreferrer">

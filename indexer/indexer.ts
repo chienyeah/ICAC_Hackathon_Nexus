@@ -1,4 +1,5 @@
 import { ethers } from "ethers";
+import type { ContractEventPayload } from "ethers";
 import { PrismaClient } from "@prisma/client";
 import * as dotenv from "dotenv";
 import TransferRegistryArtifact from "../artifacts/contracts/TransferRegistry.sol/TransferRegistry.json";
@@ -30,14 +31,41 @@ const prize = new ethers.Contract(PRIZE, PrizePoolArtifact.abi, provider);
 const sponsorship = new ethers.Contract(SPONSOR, SponsorshipRegistryArtifact.abi, provider);
 const disciplinary = new ethers.Contract(DISCIPLINARY, DisciplinaryRegistryArtifact.abi, provider);
 
-async function saveTransfer(event: ethers.EventLog, args: ethers.Result) {
-  const block = await provider.getBlock(event.blockHash!);
-  const ts = Number(block?.timestamp ?? Math.floor(Date.now() / 1000));
+async function getEventTimestamp(event: ContractEventPayload): Promise<number> {
+  const blockHash = event.log.blockHash;
+  if (blockHash) {
+    const block = await provider.getBlock(blockHash);
+    if (block?.timestamp !== undefined) {
+      return Number(block.timestamp);
+    }
+  }
+  return Math.floor(Date.now() / 1000);
+}
+
+async function getEventTxHash(event: ContractEventPayload): Promise<string> {
+  const txHash = event.log.transactionHash;
+  if (txHash) {
+    return txHash;
+  }
+  try {
+    const receipt = await event.getTransactionReceipt();
+    if (receipt?.hash) {
+      return receipt.hash;
+    }
+  } catch (err) {
+    console.warn("failed to resolve transaction hash from receipt", err);
+  }
+  throw new Error("Unable to resolve transaction hash for event");
+}
+
+async function saveTransfer(event: ContractEventPayload, args: ethers.Result) {
+  const ts = await getEventTimestamp(event);
+  const txHash = await getEventTxHash(event);
   await prisma.transfer.upsert({
     where: { id: Number(args.id) },
     create: {
       id: Number(args.id),
-      txHash: event.transactionHash,
+      txHash,
       playerId: Number(args.playerId),
       fromClub: String(args.fromClub),
       toClub: String(args.toClub),
@@ -53,21 +81,23 @@ async function saveTransfer(event: ethers.EventLog, args: ethers.Result) {
   console.log(`Saved transfer #${args.id}`);
 }
 
-async function savePrizeRelease(event: ethers.EventLog, poolId: bigint, to: string, amount: bigint) {
+async function savePrizeRelease(event: ContractEventPayload, poolId: bigint, to: string, amount: bigint) {
+  const ts = await getEventTimestamp(event);
+  const txHash = await getEventTxHash(event);
   await prisma.prizeRelease.create({
     data: {
       poolId: Number(poolId),
       toAddr: to,
       amount: amount.toString(),
-      txHash: event.transactionHash,
-      ts: Math.floor(Date.now() / 1000),
+      txHash,
+      ts,
     },
   });
   console.log(`Saved prize release pool=${poolId} to=${to}`);
 }
 
-async function saveSponsorship(event: ethers.EventLog, args: ethers.Result) {
-  const timestamp = args.ts !== undefined ? Number(args.ts) : Math.floor(Date.now() / 1000);
+async function saveSponsorship(event: ContractEventPayload, args: ethers.Result) {
+  const timestamp = args.ts !== undefined ? Number(args.ts) : await getEventTimestamp(event);
   await prisma.sponsorship.upsert({
     where: { id: Number(args.id) },
     create: {
@@ -84,8 +114,8 @@ async function saveSponsorship(event: ethers.EventLog, args: ethers.Result) {
   console.log(`Saved sponsorship #${args.id}`);
 }
 
-async function saveSanction(event: ethers.EventLog, args: ethers.Result) {
-  const timestamp = args.ts !== undefined ? Number(args.ts) : Math.floor(Date.now() / 1000);
+async function saveSanction(event: ContractEventPayload, args: ethers.Result) {
+  const timestamp = args.ts !== undefined ? Number(args.ts) : await getEventTimestamp(event);
   await prisma.sanction.upsert({
     where: { id: Number(args.id) },
     create: {
@@ -108,7 +138,7 @@ async function saveSanction(event: ethers.EventLog, args: ethers.Result) {
 }
 
 transfer.on("TransferRecorded", async (...params) => {
-  const event = params[params.length - 1] as ethers.EventLog;
+  const event = params[params.length - 1] as ContractEventPayload;
   const args = event.args as ethers.Result;
   try {
     await saveTransfer(event, args);
@@ -118,7 +148,7 @@ transfer.on("TransferRecorded", async (...params) => {
 });
 
 prize.on("PrizeReleased", async (poolId, to, amount, ...rest) => {
-  const event = rest[rest.length - 1] as ethers.EventLog;
+  const event = rest[rest.length - 1] as ContractEventPayload;
   try {
     await savePrizeRelease(event, poolId as bigint, to as string, amount as bigint);
   } catch (err) {
@@ -127,7 +157,7 @@ prize.on("PrizeReleased", async (poolId, to, amount, ...rest) => {
 });
 
 sponsorship.on("SponsorshipRegistered", async (...params) => {
-  const event = params[params.length - 1] as ethers.EventLog;
+  const event = params[params.length - 1] as ContractEventPayload;
   const args = event.args as ethers.Result;
   try {
     await saveSponsorship(event, args);
@@ -137,7 +167,7 @@ sponsorship.on("SponsorshipRegistered", async (...params) => {
 });
 
 disciplinary.on("SanctionLogged", async (...params) => {
-  const event = params[params.length - 1] as ethers.EventLog;
+  const event = params[params.length - 1] as ContractEventPayload;
   const args = event.args as ethers.Result;
   try {
     await saveSanction(event, args);
