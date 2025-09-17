@@ -1,5 +1,5 @@
 import { hardhat } from "viem/chains";
-import { createPublicClient, http } from "viem";
+import { createPublicClient, decodeEventLog, http } from "viem";
 import axios from "axios";
 import { useCallback, useEffect, useState } from "react";
 import type { Abi } from "viem";
@@ -48,7 +48,10 @@ export default function Transfers(){
   const [checkingCircuit, setCheckingCircuit] = useState(false);
   const [resuming, setResuming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [wallet, setWallet] = useState<{ address: `0x${string}` | null; isAdmin: boolean }>({ address: null, isAdmin: false });
+  const [walletState, setWalletState] = useState<{ address: `0x${string}` | null; isAdmin: boolean }>({
+    address: null,
+    isAdmin: false,
+  });
 
   const refresh = useCallback(async (): Promise<any[]> => {
     const response = await axios.get("http://localhost:4000/transfers");
@@ -85,14 +88,14 @@ export default function Transfers(){
     const eth = (window as any).ethereum;
     let info: { address: `0x${string}` | null; isAdmin: boolean } = { address: null, isAdmin: false };
     if (!eth) {
-      setWallet(info);
+      setWalletState(info);
       return info;
     }
     try {
       const accounts = (await eth.request({ method: "eth_accounts" })) as string[] | undefined;
       const address = (accounts?.[0] ?? null) as `0x${string}` | null;
       if (!address) {
-        setWallet(info);
+        setWalletState(info);
         return info;
       }
       let isAdmin = false;
@@ -112,11 +115,11 @@ export default function Transfers(){
         console.warn("admin role lookup failed", err);
       }
       info = { address, isAdmin };
-      setWallet(info);
+      setWalletState(info);
       return info;
     } catch (err) {
       console.warn("wallet status check failed", err);
-      setWallet(info);
+      setWalletState(info);
       return info;
     }
   }, []);
@@ -167,7 +170,7 @@ export default function Transfers(){
       }
       const nonce = await publicClient.getTransactionCount({
         address: info.address,
-        blockTag: "pending",
+        blockTag: "latest",
       });
       const { request } = await publicClient.simulateContract({
         abi: ROLE_MANAGER_ABI,
@@ -248,11 +251,6 @@ export default function Transfers(){
         throw new Error("Connected wallet is not authorised to record transfers");
       }
 
-      const nonce = await publicClient.getTransactionCount({
-        address: from,
-        blockTag: "pending",
-      });
-
       const { request } = await publicClient.simulateContract({
         abi: TRANSFER_ABI,
         address: TRANSFER,
@@ -269,13 +267,27 @@ export default function Transfers(){
         ],
       });
 
-      const wallet = createWalletClient({
+      const walletClient = createWalletClient({
         transport: custom((window as any).ethereum),
         chain: hardhat,
         account: from,
       });
 
-      const hash = await wallet.writeContract({ ...request, nonce });
+      let hash: `0x${string}`;
+      try {
+        hash = await walletClient.writeContract(request);
+      } catch (err: any) {
+        const message = friendlyError(err).toLowerCase();
+        if (message.includes("nonce")) {
+          const nonce = await publicClient.getTransactionCount({
+            address: from,
+            blockTag: "latest",
+          });
+          hash = await walletClient.writeContract({ ...request, nonce });
+        } else {
+          throw err;
+        }
+      }
 
       // ⬇️ wait here until mined (or throws on revert)
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
@@ -284,10 +296,41 @@ export default function Transfers(){
       }
       console.log("Tx mined:", receipt);
 
+      let eventId: bigint | null = null;
+      for (const log of receipt.logs) {
+        if (log.address.toLowerCase() !== TRANSFER.toLowerCase()) continue;
+        try {
+          const decoded = decodeEventLog({ abi: TRANSFER_ABI, data: log.data, topics: log.topics });
+          if (decoded.eventName !== "TransferRecorded") continue;
+          const args = decoded.args;
+          if (Array.isArray(args)) {
+            const maybeId = args[0];
+            if (typeof maybeId === "bigint") {
+              eventId = maybeId;
+              break;
+            }
+          } else if (args && typeof args === "object" && "id" in args) {
+            const maybeId = (args as Record<string, unknown>).id;
+            if (typeof maybeId === "bigint") {
+              eventId = maybeId;
+              break;
+            }
+          }
+        } catch (err) {
+          console.warn("Failed to decode log", err);
+        }
+      }
+      if (eventId === null) {
+        console.warn("Transfer receipt did not include a TransferRecorded log", receipt.logs);
+      }
+
       const indexed = await waitForIndexer(hash);
+      await refresh();
 
       setFile(null);
-      alert(`✅ Transfer #${indexed.id} confirmed in block ${receipt.blockNumber}`);
+      const confirmedId = indexed?.id ?? (eventId !== null ? Number(eventId) : "");
+      const label = confirmedId !== "" ? `#${confirmedId} ` : "";
+      alert(`✅ Transfer ${label}confirmed in block ${receipt.blockNumber}`);
       await refreshCircuit();
     } catch (e: any) {
       console.error(e);
@@ -299,7 +342,7 @@ export default function Transfers(){
         } catch (refreshErr) {
           console.warn("refresh circuit after revert failed", refreshErr);
         }
-        const info = lastWalletInfo ?? wallet;
+        const info = lastWalletInfo ?? walletState;
         const guidance = info.isAdmin
           ? "Use the Resume transfers button to close the circuit breaker before submitting."
           : "Please contact an administrator to resume transfers before submitting.";
@@ -313,6 +356,7 @@ export default function Transfers(){
   }
 
   useEffect(() => { void refreshWalletStatus(); }, [refreshWalletStatus]);
+
   useEffect(() => {
     const eth = (window as any).ethereum;
     if (!eth?.on) {
@@ -353,13 +397,13 @@ export default function Transfers(){
             <strong>Circuit breaker active.</strong>
             <div style={{ marginTop: 4 }}>
               Transfers are temporarily paused by administrators.
-              {wallet.isAdmin ? " Use the button below to resume transfers." : " Only an administrator can resume transfers."}
+              {walletState.isAdmin ? " Use the button below to resume transfers." : " Only an administrator can resume transfers."}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
               <button onClick={() => { void refreshCircuit(); }} disabled={checkingCircuit}>
                 {checkingCircuit ? "Checking…" : "Refresh status"}
               </button>
-              {wallet.isAdmin && (
+              {walletState.isAdmin && (
                 <button onClick={() => { void resumeTransfers(); }} disabled={resuming || checkingCircuit}>
                   {resuming ? "Resuming…" : "Resume transfers"}
                 </button>
@@ -389,7 +433,7 @@ export default function Transfers(){
       <ul>
         {list.map((t) => (
           <li key={t.id}>
-            #{t.id} Player {t.playerId} {t.fromClub} → {t.toClub} | Fee {t.feeWei} | SHA256 {t.docSha256?.slice(0, 10)}…
+            #{t.id} Player {t.playerId} {t.fromClub} → {t.toClub} | Fee {t.feeWei} | SHA256 {t.sha256 ? t.sha256.slice(0, 10) : ""}…
             {" "}
             {t.ipfsCid && (
               <a href={`https://ipfs.io/ipfs/${t.ipfsCid}`} target="_blank" rel="noreferrer">
