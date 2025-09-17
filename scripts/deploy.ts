@@ -50,11 +50,12 @@ async function main() {
   await (await transfer.grantRole(await transfer.CLUB_ROLE(), clubA.address)).wait();
   await (await transfer.grantRole(await transfer.CLUB_ROLE(), clubB.address)).wait();
 
-  // Unpause when available (no-op if not Pausable)
-  await tryUnpause(transfer);
-  await tryUnpause(prize);
-  await tryUnpause(sponsorship);
-  await tryUnpause(disciplinary);
+  // Note: Contracts using Pausable start unpaused by default
+  // Only unpause if specifically needed (commented out for now)
+  // await tryUnpause(transfer);
+  // await tryUnpause(prize);
+  // await tryUnpause(sponsorship);
+  // await tryUnpause(disciplinary);
 
   // Output single JSON line ONLY
   const out = {

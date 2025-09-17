@@ -10,18 +10,19 @@ datasource db {
 }
 
 model Transfer {
-  id          Int     @id
-  txHash      String
+  id          Int       @id @default(autoincrement())
+  eventId     Int
+  txHash      String    @unique
   playerId    Int
   fromClub    String
   toClub      String
   feeWei      String
   agent       String
   agentFeeWei String
-  sha256   String
-  ipfsCid     String
+  sha256      String
+  ipfsCid     String?
   ts          Int
-  createdAt    DateTime  @default(now())
+  createdAt   DateTime  @default(now())
 }
 
 model PrizeRelease {

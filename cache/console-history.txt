@@ -1,7 +1,4 @@
-const dotenv=require('dotenv'); dotenv.config();
-const addr = process.env.TRANSFER;
-(await ethers.provider.getCode(addr)) !== '0x'
-const tr = await ethers.getContractAt("TransferRegistry", addr);
-tr.interface.fragments
-  .filter(f => f.type === "function")
-  .map(f => f.format());
+.exit
+cmd /c "npx hardhat run scripts/check-pause.js --network localhost"
+exit
+cmd /c "npx hardhat run scripts/check-pause.js --network localhost"

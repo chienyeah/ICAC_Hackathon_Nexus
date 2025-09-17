@@ -2,8 +2,9 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 
-contract TransferRegistry is AccessControl {
+contract TransferRegistry is AccessControl, Pausable {
     bytes32 public constant CLUB_ROLE = keccak256("CLUB_ROLE");
 
     struct Transfer {
@@ -42,6 +43,14 @@ contract TransferRegistry is AccessControl {
         _grantRole(CLUB_ROLE, admin);
     }
 
+    function pause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _pause();
+    }
+
+    function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _unpause();
+    }
+
     function recordTransfer(
         uint256 playerId,
         address toClub,
@@ -50,7 +59,7 @@ contract TransferRegistry is AccessControl {
         uint256 agentFeeWei,
         bytes32 docSha256,
         string memory ipfsCid
-    ) external onlyRole(CLUB_ROLE) returns (uint256 id) {
+    ) external onlyRole(CLUB_ROLE) whenNotPaused returns (uint256 id) {
         id = ++lastId;
         transfers[id] = Transfer({
             id: id,

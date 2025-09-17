@@ -9,27 +9,19 @@ export default function App() {
   const [tab, setTab] = useState<"t" | "p" | "s" | "d">("t");
 
   return (
-    <div style={{ maxWidth: 1000, margin: "24px auto", padding: 16 }}>
+    <div className="container" style={{paddingLeft: 12, paddingRight: 12}}>
       {/* Header with title and visible Connect button */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          marginBottom: 12,
-        }}
-      >
+      <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, paddingLeft:4, paddingRight:4}}>
         <h1 style={{ margin: 0 }}>SportChain Integrity</h1>
         <ConnectButton />
       </div>
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 8, margin: "16px 0" }}>
-        <button onClick={() => setTab("t")}>Transfers</button>
-        <button onClick={() => setTab("p")}>Prize</button>
-        <button onClick={() => setTab("s")}>Sponsorship</button>
-        <button onClick={() => setTab("d")}>Disciplinary</button>
+        <button className="btn btn-ghost" onClick={() => setTab("t")}>Transfers</button>
+        <button className="btn btn-ghost" onClick={() => setTab("p")}>Prize</button>
+        <button className="btn btn-ghost" onClick={() => setTab("s")}>Sponsorship</button>
+        <button className="btn btn-ghost" onClick={() => setTab("d")}>Disciplinary</button>
       </div>
 
       {/* Pages */}
@@ -38,7 +30,7 @@ export default function App() {
       {tab === "s" && <Sponsorship />}
       {tab === "d" && <Disciplinary />}
 
-      <p style={{ opacity: 0.6, marginTop: 24 }}>
+      <p className="muted" style={{ marginTop: 24 }}>
         Connect MetaMask to chain 31337 (Hardhat).
       </p>
     </div>

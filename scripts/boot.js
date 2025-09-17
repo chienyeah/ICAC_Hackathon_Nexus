@@ -74,6 +74,7 @@ TRANSFER=${addresses.transfer}
 PRIZE=${addresses.prize}
 SPONSOR=${addresses.sponsorship}
 DISCIPLINARY=${addresses.disciplinary}
+ADMIN=${addresses.admin}
 `;
   const webEnv =
 `VITE_ROLES=${addresses.roles}
@@ -82,6 +83,7 @@ VITE_TRANSFER=${addresses.transfer}
 VITE_PRIZE=${addresses.prize}
 VITE_SPONSOR=${addresses.sponsorship}
 VITE_DISCIPLINARY=${addresses.disciplinary}
+VITE_ADMIN=${addresses.admin}
 `;
   fs.writeFileSync(path.join(ROOT, ".env"), rootEnv);
   fs.writeFileSync(path.join(WEB, ".env"), webEnv);

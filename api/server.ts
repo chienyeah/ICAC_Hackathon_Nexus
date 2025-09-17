@@ -19,6 +19,12 @@ app.post("/hash-file", async (req, res) => {
 });
 
 app.get("/transfers", async (_, res) => res.json(await prisma.transfer.findMany({ orderBy: { id: "desc" } })));
+
+// Clear transfers (for demo convenience)
+app.post("/transfers/clear", async (_, res) => {
+  await prisma.transfer.deleteMany({});
+  res.json({ ok: true });
+});
 app.get("/prizes",    async (_, res) => res.json(await prisma.prizeRelease.findMany({ orderBy: { id: "desc" } })));
 app.get("/sponsors",  async (_, res) => res.json(await prisma.sponsorship.findMany({ orderBy: { id: "desc" } })));
 app.get("/sanctions", async (_, res) => res.json(await prisma.sanction.findMany({ orderBy: { id: "desc" } })));

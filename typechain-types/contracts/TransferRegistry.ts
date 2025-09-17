@@ -72,19 +72,24 @@ export interface TransferRegistryInterface extends Interface {
       | "grantRole"
       | "hasRole"
       | "lastId"
+      | "pause"
+      | "paused"
       | "recordTransfer"
       | "renounceRole"
       | "revokeRole"
       | "supportsInterface"
       | "transfers"
+      | "unpause"
   ): FunctionFragment;
 
   getEvent(
     nameOrSignatureOrTopic:
+      | "Paused"
       | "RoleAdminChanged"
       | "RoleGranted"
       | "RoleRevoked"
       | "TransferRecorded"
+      | "Unpaused"
   ): EventFragment;
 
   encodeFunctionData(functionFragment: "CLUB_ROLE", values?: undefined): string;
@@ -109,6 +114,8 @@ export interface TransferRegistryInterface extends Interface {
     values: [BytesLike, AddressLike]
   ): string;
   encodeFunctionData(functionFragment: "lastId", values?: undefined): string;
+  encodeFunctionData(functionFragment: "pause", values?: undefined): string;
+  encodeFunctionData(functionFragment: "paused", values?: undefined): string;
   encodeFunctionData(
     functionFragment: "recordTransfer",
     values: [
@@ -137,6 +144,7 @@ export interface TransferRegistryInterface extends Interface {
     functionFragment: "transfers",
     values: [BigNumberish]
   ): string;
+  encodeFunctionData(functionFragment: "unpause", values?: undefined): string;
 
   decodeFunctionResult(functionFragment: "CLUB_ROLE", data: BytesLike): Result;
   decodeFunctionResult(
@@ -154,6 +162,8 @@ export interface TransferRegistryInterface extends Interface {
   decodeFunctionResult(functionFragment: "grantRole", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "hasRole", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "lastId", data: BytesLike): Result;
+  decodeFunctionResult(functionFragment: "pause", data: BytesLike): Result;
+  decodeFunctionResult(functionFragment: "paused", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "recordTransfer",
     data: BytesLike
@@ -168,6 +178,19 @@ export interface TransferRegistryInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "transfers", data: BytesLike): Result;
+  decodeFunctionResult(functionFragment: "unpause", data: BytesLike): Result;
+}
+
+export namespace PausedEvent {
+  export type InputTuple = [account: AddressLike];
+  export type OutputTuple = [account: string];
+  export interface OutputObject {
+    account: string;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
 }
 
 export namespace RoleAdminChangedEvent {
@@ -268,6 +291,18 @@ export namespace TransferRecordedEvent {
   export type LogDescription = TypedLogDescription<Event>;
 }
 
+export namespace UnpausedEvent {
+  export type InputTuple = [account: AddressLike];
+  export type OutputTuple = [account: string];
+  export interface OutputObject {
+    account: string;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
 export interface TransferRegistry extends BaseContract {
   connect(runner?: ContractRunner | null): TransferRegistry;
   waitForDeployment(): Promise<this>;
@@ -337,6 +372,10 @@ export interface TransferRegistry extends BaseContract {
 
   lastId: TypedContractMethod<[], [bigint], "view">;
 
+  pause: TypedContractMethod<[], [void], "nonpayable">;
+
+  paused: TypedContractMethod<[], [boolean], "view">;
+
   recordTransfer: TypedContractMethod<
     [
       playerId: BigNumberish,
@@ -399,6 +438,8 @@ export interface TransferRegistry extends BaseContract {
     "view"
   >;
 
+  unpause: TypedContractMethod<[], [void], "nonpayable">;
+
   getFunction<T extends ContractMethod = ContractMethod>(
     key: string | FunctionFragment
   ): T;
@@ -436,6 +477,12 @@ export interface TransferRegistry extends BaseContract {
   getFunction(
     nameOrSignature: "lastId"
   ): TypedContractMethod<[], [bigint], "view">;
+  getFunction(
+    nameOrSignature: "pause"
+  ): TypedContractMethod<[], [void], "nonpayable">;
+  getFunction(
+    nameOrSignature: "paused"
+  ): TypedContractMethod<[], [boolean], "view">;
   getFunction(
     nameOrSignature: "recordTransfer"
   ): TypedContractMethod<
@@ -499,7 +546,17 @@ export interface TransferRegistry extends BaseContract {
     ],
     "view"
   >;
+  getFunction(
+    nameOrSignature: "unpause"
+  ): TypedContractMethod<[], [void], "nonpayable">;
 
+  getEvent(
+    key: "Paused"
+  ): TypedContractEvent<
+    PausedEvent.InputTuple,
+    PausedEvent.OutputTuple,
+    PausedEvent.OutputObject
+  >;
   getEvent(
     key: "RoleAdminChanged"
   ): TypedContractEvent<
@@ -528,8 +585,26 @@ export interface TransferRegistry extends BaseContract {
     TransferRecordedEvent.OutputTuple,
     TransferRecordedEvent.OutputObject
   >;
+  getEvent(
+    key: "Unpaused"
+  ): TypedContractEvent<
+    UnpausedEvent.InputTuple,
+    UnpausedEvent.OutputTuple,
+    UnpausedEvent.OutputObject
+  >;
 
   filters: {
+    "Paused(address)": TypedContractEvent<
+      PausedEvent.InputTuple,
+      PausedEvent.OutputTuple,
+      PausedEvent.OutputObject
+    >;
+    Paused: TypedContractEvent<
+      PausedEvent.InputTuple,
+      PausedEvent.OutputTuple,
+      PausedEvent.OutputObject
+    >;
+
     "RoleAdminChanged(bytes32,bytes32,bytes32)": TypedContractEvent<
       RoleAdminChangedEvent.InputTuple,
       RoleAdminChangedEvent.OutputTuple,
@@ -572,6 +647,17 @@ export interface TransferRegistry extends BaseContract {
       TransferRecordedEvent.InputTuple,
       TransferRecordedEvent.OutputTuple,
       TransferRecordedEvent.OutputObject
+    >;
+
+    "Unpaused(address)": TypedContractEvent<
+      UnpausedEvent.InputTuple,
+      UnpausedEvent.OutputTuple,
+      UnpausedEvent.OutputObject
+    >;
+    Unpaused: TypedContractEvent<
+      UnpausedEvent.InputTuple,
+      UnpausedEvent.OutputTuple,
+      UnpausedEvent.OutputObject
     >;
   };
 }

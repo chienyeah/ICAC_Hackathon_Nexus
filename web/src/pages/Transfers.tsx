@@ -1,38 +1,30 @@
 import { hardhat } from "viem/chains";
-import { createPublicClient, decodeEventLog, http } from "viem";
+import { createPublicClient, decodeEventLog, http, custom } from "viem";
 import axios from "axios";
 import { useCallback, useEffect, useState } from "react";
 import type { Abi } from "viem";
-import { createWalletClient, custom } from "viem";
+import { createWalletClient } from "viem";
 import { ADDR } from "../utils/env";
 import { ensureConnected31337 } from "../utils/wallet";
 import TransferRegistryArtifact from "@artifacts/contracts/TransferRegistry.sol/TransferRegistry.json";
 import RoleManagerArtifact from "@artifacts/contracts/RoleManager.sol/RoleManager.json";
+import { Plus, RefreshCw, ShieldAlert, Play, Upload, FileText, CircleCheck, Trash2 } from "lucide-react";
 
 const TRANSFER = ADDR.TRANSFER;
 const ROLE_MANAGER = ADDR.ROLES;
-const publicClient = createPublicClient({ chain: hardhat, transport: http("http://127.0.0.1:8545") });
+const ADMIN_HINT = (import.meta as any).env?.VITE_ADMIN as `0x${string}` | undefined;
+// Use direct HTTP RPC for reads to avoid MetaMask provider rate limits/circuit breaker
+const publicClient = createPublicClient({
+  chain: hardhat,
+  transport: http("http://127.0.0.1:8545"),
+});
 const TRANSFER_ABI = TransferRegistryArtifact.abi as Abi;
 const ROLE_MANAGER_ABI = RoleManagerArtifact.abi as Abi;
 const TRANSFER_SUPPORTS_PAUSE = TRANSFER_ABI.some(
   (entry) => entry.type === "function" && (entry as any).name === "paused",
 );
 
-async function getPendingAwareNonce(address: `0x${string}`): Promise<number> {
-  try {
-    const pending = await publicClient.getTransactionCount({
-      address,
-      blockTag: "pending",
-    });
-    return Number(pending);
-  } catch (err) {
-    const latest = await publicClient.getTransactionCount({
-      address,
-      blockTag: "latest",
-    });
-    return Number(latest);
-  }
-}
+// Note: Let the wallet manage nonces to avoid provider-level circuit breakers.
 
 // Helper: read a File as base64 (browser-safe, no Buffer needed)
 function fileToBase64(file: File): Promise<string> {
@@ -76,23 +68,33 @@ export default function Transfers(){
     return data;
   }, []);
 
+  async function clearTransfers() {
+    await axios.post("http://localhost:4000/transfers/clear");
+    await refresh();
+  }
+
   async function waitForIndexer(txHash: `0x${string}`): Promise<any> {
     const target = txHash.toLowerCase();
+    console.log(`🔍 Waiting for indexer to process tx: ${target}`);
     const attempts = 12;
     for (let i = 0; i < attempts; i++) {
       try {
         const rows = await refresh();
+        console.log(`📋 Attempt ${i + 1}/${attempts}: Found ${rows.length} transfers in API`);
         const match = rows.find((row: any) => typeof row?.txHash === "string" && row.txHash.toLowerCase() === target);
         if (match) {
+          console.log(`✅ Found matching transfer #${match.id} in API`);
           return match;
         }
+        console.log(`⏳ Transfer ${target} not found yet, waiting...`);
       } catch (err: any) {
+        console.warn(`❌ API call failed on attempt ${i + 1}:`, err);
         if (i === attempts - 1) {
           throw new Error(`Transfer confirmed on-chain but failed to query the indexer: ${friendlyError(err)}`);
         }
       }
       if (i !== attempts - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1500));
       }
     }
     throw new Error(
@@ -114,21 +116,44 @@ export default function Transfers(){
         setWalletState(info);
         return info;
       }
-      let isAdmin = false;
-      try {
-        const adminRole = (await publicClient.readContract({
-          abi: ROLE_MANAGER_ABI,
-          address: ROLE_MANAGER,
-          functionName: "ADMIN_ROLE",
-        })) as `0x${string}`;
-        isAdmin = (await publicClient.readContract({
-          abi: ROLE_MANAGER_ABI,
-          address: ROLE_MANAGER,
-          functionName: "hasRole",
-          args: [adminRole, address],
-        })) as boolean;
-      } catch (err) {
-        console.warn("admin role lookup failed", err);
+      // Prefer env hint to avoid provider reads when possible
+      let isAdmin = Boolean(ADMIN_HINT && ADMIN_HINT.toLowerCase() === address.toLowerCase());
+      if (!isAdmin) {
+        try {
+          const adminRole = (await publicClient.readContract({
+            abi: ROLE_MANAGER_ABI,
+            address: ROLE_MANAGER,
+            functionName: "ADMIN_ROLE",
+          })) as `0x${string}`;
+          isAdmin = (await publicClient.readContract({
+            abi: ROLE_MANAGER_ABI,
+            address: ROLE_MANAGER,
+            functionName: "hasRole",
+            args: [adminRole, address],
+          })) as boolean;
+        } catch (err) {
+          console.warn("admin role lookup failed", err);
+        }
+      }
+
+      // Fallbacks: check DEFAULT_ADMIN_ROLE on TransferRegistry (0x00..00) and optional VITE_ADMIN hint
+      if (!isAdmin) {
+        try {
+          const DEFAULT_ADMIN_ROLE = ("0x" + "00".repeat(32)) as `0x${string}`;
+          const hasDefaultAdmin = (await publicClient.readContract({
+            abi: TRANSFER_ABI,
+            address: TRANSFER,
+            functionName: "hasRole",
+            args: [DEFAULT_ADMIN_ROLE, address],
+          })) as boolean;
+          if (hasDefaultAdmin) isAdmin = true;
+        } catch (err) {
+          // ignore
+        }
+      }
+
+      if (!isAdmin && ADMIN_HINT && typeof ADMIN_HINT === "string") {
+        if (ADMIN_HINT.toLowerCase() === address.toLowerCase()) isAdmin = true;
       }
       info = { address, isAdmin };
       setWalletState(info);
@@ -141,35 +166,48 @@ export default function Transfers(){
   }, []);
 
   async function refreshCircuit(): Promise<boolean> {
+    console.log("--- refreshCircuit called ---");
     setCheckingCircuit(true);
     let rolesPaused = false;
     let registryPaused = false;
     try {
       try {
-        rolesPaused = Boolean(await publicClient.readContract({
+        console.log("Checking RoleManager pause status...");
+        const rolesPausedResult = await publicClient.readContract({
           abi: ROLE_MANAGER_ABI,
           address: ROLE_MANAGER,
           functionName: "paused",
-        }));
-      } catch (err) {
+        });
+        rolesPaused = Boolean(rolesPausedResult);
+        console.log("RoleManager.paused() returned:", rolesPausedResult, "->", rolesPaused);
+      } catch (err: any) {
         console.warn("roles pause probe failed", err);
       }
-      if (TRANSFER_SUPPORTS_PAUSE) {
-        try {
-          registryPaused = Boolean(await publicClient.readContract({
-            abi: TRANSFER_ABI,
-            address: TRANSFER,
-            functionName: "paused",
-          }));
-        } catch (err) {
-          console.warn("transfer pause probe failed", err);
-        }
+
+      try {
+        console.log("Checking TransferRegistry pause status...");
+        const registryPausedResult = await publicClient.readContract({
+          abi: TRANSFER_ABI,
+          address: TRANSFER,
+          functionName: "paused",
+        });
+        registryPaused = Boolean(registryPausedResult);
+        console.log("TransferRegistry.paused() returned:", registryPausedResult, "->", registryPaused);
+      } catch (err: any) {
+        console.warn("transfer pause probe failed", err);
       }
-      return rolesPaused || registryPaused;
+
+      const isPaused = rolesPaused || registryPaused;
+      console.log("Final pause state (isPaused):", isPaused);
+      return isPaused;
     } finally {
+      const finalState = rolesPaused || registryPaused;
+      console.log("Setting circuitSource:", { roles: rolesPaused, registry: registryPaused });
       setCircuitSource({ roles: rolesPaused, registry: registryPaused });
-      setCircuitOpen(rolesPaused || registryPaused);
+      console.log("Setting circuitOpen:", finalState);
+      setCircuitOpen(finalState);
       setCheckingCircuit(false);
+      console.log("--- refreshCircuit finished ---");
     }
   }
 
@@ -184,31 +222,43 @@ export default function Transfers(){
       if (!info.isAdmin) {
         throw new Error("Only an administrator can close the circuit breaker");
       }
-      const { request } = await publicClient.simulateContract({
-        abi: ROLE_MANAGER_ABI,
-        address: ROLE_MANAGER,
-        functionName: "unpause",
-        account: info.address,
-      });
       const walletClient = createWalletClient({
         transport: custom((window as any).ethereum),
         chain: hardhat,
         account: info.address,
       });
-      const initialNonce = await getPendingAwareNonce(info.address);
-      let hash: `0x${string}`;
-      try {
-        hash = await walletClient.writeContract({ ...request, nonce: initialNonce });
-      } catch (err: any) {
-        const message = friendlyError(err).toLowerCase();
-        if (message.includes("nonce")) {
-          const retryNonce = await getPendingAwareNonce(info.address);
-          hash = await walletClient.writeContract({ ...request, nonce: retryNonce });
-        } else {
-          throw err;
-        }
+      const [rolesPaused, registryPaused] = await Promise.all([
+        publicClient.readContract({ abi: ROLE_MANAGER_ABI, address: ROLE_MANAGER, functionName: "paused" }).catch(() => false),
+        TRANSFER_SUPPORTS_PAUSE
+          ? publicClient.readContract({ abi: TRANSFER_ABI, address: TRANSFER, functionName: "paused" }).catch(() => false)
+          : Promise.resolve(false),
+      ]);
+
+      const txHashes: `0x${string}`[] = [];
+
+      if (rolesPaused) {
+        const { request } = await publicClient.simulateContract({
+          abi: ROLE_MANAGER_ABI,
+          address: ROLE_MANAGER,
+          functionName: "unpause",
+          account: info.address,
+        });
+        txHashes.push(await walletClient.writeContract(request));
       }
-      await publicClient.waitForTransactionReceipt({ hash });
+
+      if (registryPaused) {
+        const { request } = await publicClient.simulateContract({
+          abi: TRANSFER_ABI,
+          address: TRANSFER,
+          functionName: "unpause",
+          account: info.address,
+        });
+        txHashes.push(await walletClient.writeContract(request));
+      }
+
+      for (const h of txHashes) {
+        await publicClient.waitForTransactionReceipt({ hash: h });
+      }
       await refreshCircuit();
       alert("✅ Transfers resumed. You can submit new transfers now.");
     } catch (err) {
@@ -234,6 +284,8 @@ export default function Transfers(){
 
       const stillOpen = await refreshCircuit();
       if (stillOpen) {
+        // Force circuit state to be consistent for UI
+        setCircuitOpen(true);
         if (walletInfo.isAdmin) {
           throw new Error("Transfers are paused. Close the circuit breaker with the Resume button before submitting.");
         }
@@ -297,27 +349,15 @@ export default function Transfers(){
         account: from,
       });
 
-      const initialNonce = await getPendingAwareNonce(from);
-
-      let hash: `0x${string}`;
-      try {
-        hash = await walletClient.writeContract({ ...request, nonce: initialNonce });
-      } catch (err: any) {
-        const message = friendlyError(err).toLowerCase();
-        if (message.includes("nonce")) {
-          const retryNonce = await getPendingAwareNonce(from);
-          hash = await walletClient.writeContract({ ...request, nonce: retryNonce });
-        } else {
-          throw err;
-        }
-      }
+      const hash = await walletClient.writeContract(request);
+      console.log(`🚀 Transaction submitted: ${hash}`);
 
       // ⬇️ wait here until mined (or throws on revert)
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status !== "success") {
         throw new Error("Transaction reverted on-chain. Check wallet role and try again.");
       }
-      console.log("Tx mined:", receipt);
+      console.log(`⛏️ Tx mined in block ${receipt.blockNumber}: ${hash}`);
 
       let eventId: bigint | null = null;
       for (const log of receipt.logs) {
@@ -358,13 +398,12 @@ export default function Transfers(){
     } catch (e: any) {
       console.error(e);
       const message = friendlyError(e);
-      if (/circuit breaker is open|Pausable: paused/i.test(message)) {
+      let paused = false;
+      try {
+        paused = await refreshCircuit();
+      } catch {}
+      if (paused || /Pausable: paused/i.test(message)) {
         setCircuitOpen(true);
-        try {
-          await refreshCircuit();
-        } catch (refreshErr) {
-          console.warn("refresh circuit after revert failed", refreshErr);
-        }
         const info = lastWalletInfo ?? walletState;
         const guidance = info.isAdmin
           ? "Use the Resume transfers button to close the circuit breaker before submitting."
@@ -403,69 +442,92 @@ export default function Transfers(){
   }, [refresh]);
 
   return (
-    <div>
-      <h2>Record Transfer</h2>
-      <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:12}}>
-        {circuitOpen && (
-          <div
-            style={{
-              gridColumn: "1 / -1",
-              background: "#fff2f0",
-              color: "#7a1f1f",
-              padding: 12,
-              borderRadius: 6,
-              lineHeight: 1.4,
-            }}
-          >
-            <strong>Circuit breaker active.</strong>
-            <div style={{ marginTop: 4 }}>
-              Transfers are temporarily paused by administrators.
-              {walletState.isAdmin ? " Use the button below to resume transfers." : " Only an administrator can resume transfers."}
+    <div className="container" style={{paddingTop: 12}}>
+      <div className="card card-dark" style={{overflow: "hidden"}}>
+        <div className="card-body">
+          <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12}}>
+            <div>
+              <div className="title">Record Transfer</div>
+              <div className="subtitle">Create a new player transfer with optional document hash</div>
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-              <button onClick={() => { void refreshCircuit(); }} disabled={checkingCircuit}>
-                {checkingCircuit ? "Checking…" : "Refresh status"}
-              </button>
-              {walletState.isAdmin && (
-                <button onClick={() => { void resumeTransfers(); }} disabled={resuming || checkingCircuit}>
-                  {resuming ? "Resuming…" : "Resume transfers"}
+            <button className="btn btn-ghost" onClick={() => { void refresh(); }}><RefreshCw size={16}/> Refresh</button>
+          </div>
+
+          <div className="grid grid-responsive" style={{width:"100%"}}>
+        {circuitOpen && (
+          <div className="card" style={{ gridColumn: "1 / -1", borderColor: "#fecaca", background: "#fff1f2" }}>
+            <div className="card-body" style={{color: "#7a1f1f"}}>
+              <div style={{display:"flex", alignItems:"center", gap:8, fontWeight:700}}><ShieldAlert size={18}/> Circuit breaker active</div>
+              <div className="subtitle">
+                Transfers are temporarily paused by administrators.
+                {walletState.isAdmin ? " Use the button below to resume transfers." : " Only an administrator can resume transfers."}
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                <button className="btn btn-ghost" onClick={() => { void refreshCircuit(); }} disabled={checkingCircuit}>
+                  <RefreshCw size={16}/>{checkingCircuit ? "Checking…" : "Refresh status"}
                 </button>
+                {walletState.isAdmin && (
+                  <button className="btn" onClick={() => { void resumeTransfers(); }} disabled={resuming || checkingCircuit}>
+                    <Play size={16}/>{resuming ? "Resuming…" : "Resume transfers"}
+                  </button>
+                )}
+              </div>
+              {(circuitSource.roles || circuitSource.registry) && (
+                <div className="muted" style={{ marginTop: 6 }}>
+                  {circuitSource.roles && "Role manager pause is active."}
+                  {circuitSource.registry && `${circuitSource.roles ? " " : ""}Transfer registry pause is active.`}
+                </div>
               )}
             </div>
-            {(circuitSource.roles || circuitSource.registry) && (
-              <div style={{ fontSize: 12, marginTop: 6, opacity: 0.85 }}>
-                {circuitSource.roles && "Role manager pause is active."}
-                {circuitSource.registry && `${circuitSource.roles ? " " : ""}Transfer registry pause is active.`}
-              </div>
-            )}
           </div>
         )}
-        <input placeholder="Player ID" value={form.playerId} onChange={e=>setForm({...form, playerId: +e.target.value})}/>
-        <input placeholder="To Club (0x...)" value={form.toClub} onChange={e=>setForm({...form, toClub: e.target.value})}/>
-        <input placeholder="Fee (wei)" value={form.feeWei} onChange={e=>setForm({...form, feeWei: e.target.value})}/>
-        <input placeholder="Agent (0x...)" value={form.agent} onChange={e=>setForm({...form, agent: e.target.value})}/>
-        <input placeholder="Agent Fee (wei)" value={form.agentFeeWei} onChange={e=>setForm({...form, agentFeeWei: e.target.value})}/>
-        <input placeholder="IPFS CID (optional)" value={form.ipfsCid} onChange={e=>setForm({...form, ipfsCid: e.target.value})}/>
-        <input type="file" onChange={e=>setFile(e.target.files?.[0] || null)} />
-        <button onClick={record} disabled={submitting || circuitOpen || checkingCircuit || resuming}>
-          {circuitOpen ? "Transfers paused" : submitting ? "Submitting…" : "Submit"}
+        <input className="input" placeholder="Player ID" value={form.playerId} onChange={e=>setForm({...form, playerId: +e.target.value})}/>
+        <input className="input" placeholder="To Club (0x...)" value={form.toClub} onChange={e=>setForm({...form, toClub: e.target.value})}/>
+        <input className="input" placeholder="Fee (wei)" value={form.feeWei} onChange={e=>setForm({...form, feeWei: e.target.value})}/>
+        <input className="input" placeholder="Agent (0x...)" value={form.agent} onChange={e=>setForm({...form, agent: e.target.value})}/>
+        <input className="input" placeholder="Agent Fee (wei)" value={form.agentFeeWei} onChange={e=>setForm({...form, agentFeeWei: e.target.value})}/>
+        <input className="input" placeholder="IPFS CID (optional)" value={form.ipfsCid} onChange={e=>setForm({...form, ipfsCid: e.target.value})}/>
+        <div style={{display:"flex", gap:8, alignItems:"center", flexWrap:'wrap'}}>
+          <label className="btn btn-ghost" style={{position:'relative', overflow:'hidden'}}>
+            <input type="file" onChange={e=>setFile(e.target.files?.[0] || null)} style={{position:'absolute', inset:0, opacity:0, cursor:'pointer'}} />
+            <FileText size={14}/> Choose file
+          </label>
+          <span className="muted" style={{whiteSpace:"nowrap"}}>{file ? file.name : "No file chosen (optional)"}</span>
+        </div>
+        <button className="btn" onClick={record} disabled={submitting || circuitOpen || checkingCircuit || resuming}>
+          <Plus size={16}/>{circuitOpen ? "Transfers paused" : submitting ? "Submitting…" : "Submit"}
         </button>
+          </div>
+        </div>
       </div>
 
-      <h3 style={{marginTop:24}}>Recent Transfers</h3>
-      <ul>
-        {list.map((t) => (
-          <li key={t.id}>
-            #{t.id} Player {t.playerId} {t.fromClub} → {t.toClub} | Fee {t.feeWei} | SHA256 {t.sha256 ? t.sha256.slice(0, 10) : ""}…
-            {" "}
-            {t.ipfsCid && (
-              <a href={`https://ipfs.io/ipfs/${t.ipfsCid}`} target="_blank" rel="noreferrer">
-                doc
-              </a>
-            )}
-          </li>
-        ))}
-      </ul>
+      <div className="card card-full" style={{marginTop:24}}>
+        <div className="card-body">
+          <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8}}>
+            <div className="title">Recent Transfers</div>
+            <button className="btn btn-ghost" onClick={() => { void clearTransfers(); }}><Trash2 size={16}/> Clear recent transfers</button>
+          </div>
+          <ul>
+            {list.map((t) => (
+              <li key={t.id} style={{display:"flex", alignItems:"center", gap:8, padding:"12px 0", borderBottom:"1px solid #e5e7eb", flexWrap:'wrap'}}>
+                <CircleCheck size={16} color="#10b981"/>
+                <span style={{fontWeight:600}}>#{t.id}</span>
+                <span>Player {t.playerId}</span>
+                <span style={{color:'#6b7280'}}>{t.fromClub}</span>
+                <span>→</span>
+                <span style={{color:'#6b7280'}}>{t.toClub}</span>
+                <span>| Fee {t.feeWei}</span>
+                <span className="muted">| SHA256 {t.sha256 ? t.sha256.slice(0, 10) : ""}…</span>
+                {t.ipfsCid && (
+                  <a href={`https://ipfs.io/ipfs/${t.ipfsCid}`} target="_blank" rel="noreferrer" style={{marginLeft:'auto'}}>
+                    <Upload size={16}/> doc
+                  </a>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
     </div>
   );
 }
