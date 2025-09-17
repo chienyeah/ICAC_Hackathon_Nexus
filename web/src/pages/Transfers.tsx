@@ -18,6 +18,22 @@ const TRANSFER_SUPPORTS_PAUSE = TRANSFER_ABI.some(
   (entry) => entry.type === "function" && (entry as any).name === "paused",
 );
 
+async function getPendingAwareNonce(address: `0x${string}`): Promise<number> {
+  try {
+    const pending = await publicClient.getTransactionCount({
+      address,
+      blockTag: "pending",
+    });
+    return Number(pending);
+  } catch (err) {
+    const latest = await publicClient.getTransactionCount({
+      address,
+      blockTag: "latest",
+    });
+    return Number(latest);
+  }
+}
+
 // Helper: read a File as base64 (browser-safe, no Buffer needed)
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -168,10 +184,6 @@ export default function Transfers(){
       if (!info.isAdmin) {
         throw new Error("Only an administrator can close the circuit breaker");
       }
-      const nonce = await publicClient.getTransactionCount({
-        address: info.address,
-        blockTag: "latest",
-      });
       const { request } = await publicClient.simulateContract({
         abi: ROLE_MANAGER_ABI,
         address: ROLE_MANAGER,
@@ -183,7 +195,19 @@ export default function Transfers(){
         chain: hardhat,
         account: info.address,
       });
-      const hash = await walletClient.writeContract({ ...request, nonce });
+      const initialNonce = await getPendingAwareNonce(info.address);
+      let hash: `0x${string}`;
+      try {
+        hash = await walletClient.writeContract({ ...request, nonce: initialNonce });
+      } catch (err: any) {
+        const message = friendlyError(err).toLowerCase();
+        if (message.includes("nonce")) {
+          const retryNonce = await getPendingAwareNonce(info.address);
+          hash = await walletClient.writeContract({ ...request, nonce: retryNonce });
+        } else {
+          throw err;
+        }
+      }
       await publicClient.waitForTransactionReceipt({ hash });
       await refreshCircuit();
       alert("✅ Transfers resumed. You can submit new transfers now.");
@@ -273,23 +297,7 @@ export default function Transfers(){
         account: from,
       });
 
-      const getNonce = async (): Promise<bigint> => {
-        try {
-          const pending = await publicClient.getTransactionCount({
-            address: from,
-            blockTag: "pending",
-          });
-          return BigInt(pending);
-        } catch (err) {
-          const latest = await publicClient.getTransactionCount({
-            address: from,
-            blockTag: "latest",
-          });
-          return BigInt(latest);
-        }
-      };
-
-      const initialNonce = await getNonce();
+      const initialNonce = await getPendingAwareNonce(from);
 
       let hash: `0x${string}`;
       try {
@@ -297,7 +305,7 @@ export default function Transfers(){
       } catch (err: any) {
         const message = friendlyError(err).toLowerCase();
         if (message.includes("nonce")) {
-          const retryNonce = await getNonce();
+          const retryNonce = await getPendingAwareNonce(from);
           hash = await walletClient.writeContract({ ...request, nonce: retryNonce });
         } else {
           throw err;
