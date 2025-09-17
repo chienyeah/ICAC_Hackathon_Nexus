@@ -273,17 +273,32 @@ export default function Transfers(){
         account: from,
       });
 
-      let hash: `0x${string}`;
-      try {
-        hash = await walletClient.writeContract(request);
-      } catch (err: any) {
-        const message = friendlyError(err).toLowerCase();
-        if (message.includes("nonce")) {
-          const nonce = await publicClient.getTransactionCount({
+      const getNonce = async (): Promise<bigint> => {
+        try {
+          const pending = await publicClient.getTransactionCount({
+            address: from,
+            blockTag: "pending",
+          });
+          return BigInt(pending);
+        } catch (err) {
+          const latest = await publicClient.getTransactionCount({
             address: from,
             blockTag: "latest",
           });
-          hash = await walletClient.writeContract({ ...request, nonce });
+          return BigInt(latest);
+        }
+      };
+
+      const initialNonce = await getNonce();
+
+      let hash: `0x${string}`;
+      try {
+        hash = await walletClient.writeContract({ ...request, nonce: initialNonce });
+      } catch (err: any) {
+        const message = friendlyError(err).toLowerCase();
+        if (message.includes("nonce")) {
+          const retryNonce = await getNonce();
+          hash = await walletClient.writeContract({ ...request, nonce: retryNonce });
         } else {
           throw err;
         }
