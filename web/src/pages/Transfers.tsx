@@ -313,7 +313,6 @@ export default function Transfers(){
   }
 
   useEffect(() => { void refreshWalletStatus(); }, [refreshWalletStatus]);
-
   useEffect(() => {
     const eth = (window as any).ethereum;
     if (!eth?.on) {
